@@ -1,0 +1,32 @@
+# Go
+/bin/
+coverage.out
+coverage.html
+*.test
+
+# Frontend
+/frontend/node_modules/
+/frontend/dist/
+/frontend/coverage/
+
+# goreleaser
+/dist/
+
+# セッションストア（file モード時）
+/tmp/cternal/
+
+# エディタ
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 環境変数ファイル
+.env
+.env.local
+.env.*.local

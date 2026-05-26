@@ -3,11 +3,130 @@
 version: '3'
 
 vars:
-  GREETING: Hello, world!
+  BINARY: bin/cternal
+  MAIN: ./cmd/cternal/
 
 tasks:
   default:
-    desc: Print a greeting message
+    desc: List available tasks
     cmds:
-      - echo "{{.GREETING}}"
+      - task --list
     silent: true
+
+  # ── ビルド ────────────────────────────────────────────────
+  build:
+    desc: Build frontend then Go binary
+    cmds:
+      - task: build:frontend
+      - task: build:go
+
+  build:go:
+    desc: Build Go binary (embeds frontend/dist)
+    cmds:
+      - go build -o {{.BINARY}} {{.MAIN}}
+    sources:
+      - '**/*.go'
+      - 'frontend/dist/**/*'
+    generates:
+      - '{{.BINARY}}'
+
+  build:frontend:
+    desc: Build Vue frontend (output to frontend/dist)
+    dir: frontend
+    cmds:
+      - npm run build
+    sources:
+      - 'src/**/*'
+      - 'index.html'
+      - 'package.json'
+      - 'vite.config.*'
+      - 'tsconfig*.json'
+    generates:
+      - 'dist/**/*'
+
+  # ── 開発サーバ ────────────────────────────────────────────
+  dev:
+    desc: Start Go server and Vite dev server concurrently
+    deps:
+      - dev:go
+      - dev:frontend
+
+  dev:go:
+    desc: Start Go server (API + WebSocket) on :8080
+    cmds:
+      - go run {{.MAIN}}
+
+  dev:frontend:
+    desc: Start Vite dev server (proxies /api and /ws to :8080)
+    dir: frontend
+    cmds:
+      - npm run dev
+
+  # ── テスト ────────────────────────────────────────────────
+  test:
+    desc: Run all tests (Go + frontend)
+    cmds:
+      - task: test:go
+      - task: test:frontend
+
+  test:go:
+    desc: Run Go tests
+    cmds:
+      - go test ./...
+
+  test:frontend:
+    desc: Run frontend tests (vitest)
+    dir: frontend
+    cmds:
+      - npm run test
+
+  # ── カバレッジ ────────────────────────────────────────────
+  coverage:
+    desc: Run Go tests with coverage report
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+      - go tool cover -func=coverage.out
+
+  coverage:frontend:
+    desc: Run frontend tests with coverage (vitest --coverage)
+    dir: frontend
+    cmds:
+      - npm run coverage
+
+  # ── リント / フォーマット ─────────────────────────────────
+  lint:
+    desc: Run all linters (Go + frontend)
+    cmds:
+      - task: lint:go
+      - task: lint:frontend
+
+  lint:go:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run
+
+  lint:frontend:
+    desc: Run ESLint and vue-tsc type check
+    dir: frontend
+    cmds:
+      - npm run lint
+      - npm run type-check
+
+  fmt:
+    desc: Format Go source files (gofmt + goimports)
+    cmds:
+      - gofmt -w .
+      - goimports -w .
+
+  # ── 依存関係 ──────────────────────────────────────────────
+  install:
+    desc: Install all dependencies (Go modules + npm)
+    cmds:
+      - go mod download
+      - npm --prefix frontend install
+
+  # ── リリース ──────────────────────────────────────────────
+  release:dry:
+    desc: Build release snapshot locally without publishing
+    cmds:
+      - goreleaser release --snapshot --clean
