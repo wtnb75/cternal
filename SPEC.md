@@ -30,7 +30,7 @@
 
 - `exec` / `attach` モード: ターミナルサイズ変更（SIGWINCH）をリアルタイムに反映
 - `attach` モード: コンテナごとにセッションは1つ。複数ブラウザが同一セッションに接続して出力を共有し、いずれからも入力可能
-- `logs` モード: 過去ログ＋ライブストリームを受信。入力メッセージは無視する
+- `logs` モード: 過去ログ＋ライブストリームを受信。入力メッセージは無視する。取得開始位置は `since` で指定し、省略時はコンテナ起動時点からの全ログ
 - 接続と同時にセッションの録画を開始する
 
 ### 3. セッション録画
@@ -100,7 +100,7 @@
 
 ### 12. Webhook 通知
 
-- セッション開始・終了、出力パターン検知のタイミングで指定 URL に HTTP POST する
+- セッション開始・終了のタイミングで指定 URL に HTTP POST する
 - ペイロードは JSON（セッション情報 + イベント種別）
 - `CTERNAL_WEBHOOK_URL` で設定。複数 URL をカンマ区切りで指定可能
 
@@ -269,12 +269,13 @@ cternal record [flags] <container>
   "mode": "exec",             // "exec" | "attach" | "logs"（省略時は "exec"）
   "shell": "/bin/bash",       // exec のみ。省略時はコンテナの SHELL 環境変数を参照し、未設定なら /bin/sh
   "cols": 220,                // exec / attach のみ
-  "rows": 50                  // exec / attach のみ
+  "rows": 50,                 // exec / attach のみ
+  "since": "2024-05-18T10:00:00Z" // logs のみ。RFC3339 またはデュレーション文字列（"1h", "30m"）。省略時はコンテナ起動時点から
 }
 ```
 
 `attach` モードは、対象コンテナの既存セッションを返す（get-or-create）。
-`logs` モードは `shell` / `cols` / `rows` を無視する。
+`logs` モードは `shell` / `cols` / `rows` を無視する。`since` は `logs` モード専用で他のモードでは無視する。
 
 ### POST /api/v1/sessions レスポンス
 
@@ -346,6 +347,12 @@ cternal record [flags] <container>
 | `--max-sessions` | `CTERNAL_MAX_SESSIONS` | `100` | 同時セッション数の上限。超えた場合は 503 を返す |
 | `--export-url` | `CTERNAL_EXPORT_URL` | — | セッション終了時の `.cast` 自動送信先 URL（HTTP PUT） |
 | `--webhook-url` | `CTERNAL_WEBHOOK_URL` | — | イベント通知先 Webhook URL（カンマ区切りで複数指定可） |
+| `--log-level` | `CTERNAL_LOG_LEVEL` | `info` | ログレベル（`debug` / `info` / `warn` / `error`） |
+| `--log-format` | `CTERNAL_LOG_FORMAT` | `text` | ログ形式（`text` / `json`） |
+| — | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP エクスポート先（例: `http://localhost:4318`）。未設定時は OTel 無効 |
+| — | `OTEL_SERVICE_NAME` | `cternal` | テレメトリ上のサービス名 |
+
+上記以外の OTel SDK 標準環境変数（`OTEL_TRACES_SAMPLER`、`OTEL_METRICS_EXPORTER`、`OTEL_PROPAGATORS` 等）もそのまま有効。
 
 ```sh
 # 使用例
@@ -360,6 +367,7 @@ cternal --addr :9090 --base-path /cternal --session-store file --session-dir /va
 - 認証: 本バージョンは対象外（ネットワーク境界で保護する前提）
 - 同時セッション数が `CTERNAL_MAX_SESSIONS` を超えた場合は `POST /api/v1/sessions` が 503 を返す
 - 複数ブラウザからの同時アクセスに対してデータ競合が起きない設計とする（セッションストア・録画バッファは排他制御、WebSocket 書き込みはセッションごとに直列化）
+- `OTEL_EXPORTER_OTLP_ENDPOINT` が設定されている場合、OpenTelemetry によるトレース・メトリクスを OTLP で送信する
 
 ## コンテナイメージ
 

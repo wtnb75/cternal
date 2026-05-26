@@ -15,13 +15,62 @@
 - リンタ: `golangci-lint`
 - テスト: `go test ./...`、テーブルドリブンテスト推奨
 - エラーは `fmt.Errorf("...: %w", err)` でラップ
-- ロガー: `log/slog`（構造化ログ）
+- ロガー: `log/slog`（構造化ログ）。`--log-level` で slog のレベルフィルタを設定し、`--log-format` で `text`（人間可読）/ `json`（本番向け）を切り替える
+- オブザーバビリティ: `go.opentelemetry.io/otel`。`OTEL_EXPORTER_OTLP_ENDPOINT` が未設定の場合は OTel プロバイダを初期化しない（no-op）
 - HTTP フレームワーク: `net/http`（標準ライブラリ）+ `gorilla/websocket`
 - コンテナ API クライアント: Docker SDK (`github.com/docker/docker/client`)、Podman は Docker 互換 API 使用、K8s は `k8s.io/client-go`
 - CLI: `github.com/spf13/cobra`。サブコマンド: `serve`（HTTP サーバ）、`play`（.cast 再生）、`record`（録画）、`version`、`completion`。引数なしは `serve` として動作する
 - 設定: CLI フラグ > 環境変数 > デフォルト値の順で解決。`github.com/spf13/viper` と cobra の pflag を統合して使用
 - コンテキストは必ず引き回す（`context.Context` を第一引数に）
 - goroutine リークを防ぐため、起動した goroutine は必ず終了を確認できる設計にする。複数 goroutine の管理には `golang.org/x/sync/errgroup` を使い、エラー伝播と context キャンセルを一元化する
+
+### OpenTelemetry 計装方針
+
+**使用ライブラリ**
+- `go.opentelemetry.io/otel` — コア API
+- `go.opentelemetry.io/otel/sdk/trace` / `sdk/metric` — SDK
+- `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` / `otlpmetrichttp` — OTLP/HTTP エクスポーター
+- `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` — HTTP ミドルウェア
+
+**トレース（Spans）**
+
+| スパン名 | 対象 |
+|---|---|
+| `http.server.*` | 全 HTTP リクエスト（otelhttp ミドルウェアで自動） |
+| `session.create` | セッション作成（コンテナ接続確立まで） |
+| `session.attach` | WebSocket 接続〜切断のライフサイクル |
+| `runtime.exec` / `runtime.attach` / `runtime.logs` | コンテナ API 呼び出し |
+| `recorder.export` | `.cast` エクスポート・自動送信 |
+
+**メトリクス**
+
+| メトリクス名 | 種別 | 説明 |
+|---|---|---|
+| `cternal.sessions.active` | Gauge | 現在のアクティブセッション数 |
+| `cternal.sessions.duration` | Histogram | セッション継続時間（秒） |
+| `cternal.websocket.messages` | Counter | WebSocket 送受信メッセージ数（方向・モード別ラベル） |
+| `cternal.runtime.api.duration` | Histogram | Docker / K8s API 呼び出しレイテンシ |
+| `cternal.webhook.errors` | Counter | Webhook 送信失敗数 |
+
+**初期化**
+- `OTEL_EXPORTER_OTLP_ENDPOINT` が空の場合は `trace.NewNoopTracerProvider()` / `metric.NewNoopMeterProvider()` を使い、アプリコードへの影響をゼロにする
+- トレースコンテキストは `context.Context` 経由で引き回す（既存の `context.Context` 第一引数規約と整合）
+
+### ログ方針
+
+**アクセスログ**（`info` レベル）
+- HTTP リクエストごとに method・path・status・レイテンシ・remote addr を構造化フィールドで出力する
+- WebSocket 接続・切断もアクセスログとして記録する（セッション ID・モード・コンテナ名を含める）
+- `net/http` のミドルウェアとして実装し、すべてのハンドラに適用する
+
+**動作ログ（レベル別の出力内容）**
+
+| レベル | 出力する内容 |
+|---|---|
+| `error` | コンテナ接続失敗、Webhook / エクスポート送信失敗、内部エラー |
+| `warn` | セッション TTL 切れ・破棄、同時接続数上限到達、再接続検知 |
+| `info` | サーバ起動・停止、セッション作成・終了、ランタイム初期化（デフォルト） |
+| `debug` | Docker / K8s API 呼び出し詳細、WebSocket フレーム内容、バッファ差分送信 |
 
 ### 接続モードの実装方針
 
@@ -134,7 +183,7 @@ frontend/
 - 失敗時はログに記録するが、セッション破棄自体はブロックしない
 
 **Webhook 通知（サーバサイド）**
-- セッション開始・終了・パターン検知のタイミングで `CTERNAL_WEBHOOK_URL` に HTTP POST する
+- セッション開始・終了のタイミングで `CTERNAL_WEBHOOK_URL` に HTTP POST する
 - ペイロード例: `{"event": "session.start", "session_id": "...", "container": "...", "mode": "exec"}`
 - 複数 URL への送信は並列で行い、個別の失敗が他に影響しないようにする
 
