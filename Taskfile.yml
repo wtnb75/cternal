@@ -34,7 +34,7 @@ tasks:
     desc: Build Vue frontend (output to frontend/dist)
     dir: frontend
     cmds:
-      - npm run build
+      - pnpm run build
     sources:
       - 'src/**/*'
       - 'index.html'
@@ -60,7 +60,7 @@ tasks:
     desc: Start Vite dev server (proxies /api and /ws to :8080)
     dir: frontend
     cmds:
-      - npm run dev
+      - pnpm run dev
 
   # ── テスト ────────────────────────────────────────────────
   test:
@@ -78,7 +78,7 @@ tasks:
     desc: Run frontend tests (vitest)
     dir: frontend
     cmds:
-      - npm run test
+      - pnpm run test
 
   # ── カバレッジ ────────────────────────────────────────────
   coverage:
@@ -91,7 +91,7 @@ tasks:
     desc: Run frontend tests with coverage (vitest --coverage)
     dir: frontend
     cmds:
-      - npm run coverage
+      - pnpm run coverage
 
   # ── リント / フォーマット ─────────────────────────────────
   lint:
@@ -109,8 +109,8 @@ tasks:
     desc: Run ESLint and vue-tsc type check
     dir: frontend
     cmds:
-      - npm run lint
-      - npm run type-check
+      - pnpm run lint
+      - pnpm run type-check
 
   fmt:
     desc: Format Go source files (gofmt + goimports)
@@ -120,10 +120,10 @@ tasks:
 
   # ── 依存関係 ──────────────────────────────────────────────
   install:
-    desc: Install all dependencies (Go modules + npm)
+    desc: Install all dependencies (Go modules + pnpm)
     cmds:
       - go mod download
-      - npm --prefix frontend install
+      - pnpm --dir frontend install
 
   # ── リリース ──────────────────────────────────────────────
   release:dry:

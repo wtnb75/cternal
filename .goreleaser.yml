@@ -4,8 +4,8 @@ project_name: cternal
 
 before:
   hooks:
-    - npm --prefix frontend install
-    - npm --prefix frontend run build
+    - pnpm --dir frontend install --frozen-lockfile
+    - pnpm --dir frontend run build
 
 builds:
   - id: cternal

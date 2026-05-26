@@ -17,16 +17,23 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install frontend dependencies
-        run: npm --prefix frontend install
+        run: pnpm --dir frontend install --frozen-lockfile
 
       - name: Build frontend
-        run: npm --prefix frontend run build
+        run: pnpm --dir frontend run build
 
       - name: Build Go binary
         run: go build -o /dev/null ./cmd/cternal/
@@ -35,7 +42,7 @@ jobs:
         run: go test -race -coverprofile=coverage.out $(go list ./... | grep -v /frontend/)
 
       - name: Run frontend tests
-        run: npm --prefix frontend run test
+        run: pnpm --dir frontend run test
 
       - name: Go coverage summary
         run: go tool cover -func=coverage.out | tail -1
@@ -50,16 +57,23 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install frontend dependencies
-        run: npm --prefix frontend install
+        run: pnpm --dir frontend install --frozen-lockfile
 
       - name: Build frontend (required for go:embed)
-        run: npm --prefix frontend run build
+        run: pnpm --dir frontend run build
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -68,7 +82,7 @@ jobs:
           args: --timeout=5m
 
       - name: Frontend lint
-        run: npm --prefix frontend run lint
+        run: pnpm --dir frontend run lint
 
       - name: Frontend type check
-        run: npm --prefix frontend run type-check
+        run: pnpm --dir frontend run type-check
