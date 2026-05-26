@@ -1,0 +1,21 @@
+{
+  "containers": "コンテナ",
+  "refresh": "更新",
+  "filterByName": "名前でフィルタ",
+  "allStatuses": "全てのステータス",
+  "running": "実行中",
+  "exited": "停止",
+  "exec": "Exec",
+  "attach": "Attach",
+  "logs": "Logs",
+  "noContainers": "コンテナが見つかりません",
+  "loading": "読み込み中...",
+  "connected": "接続済み",
+  "reconnecting": "再接続中...",
+  "downloadCast": ".cast ダウンロード",
+  "back": "← コンテナ一覧",
+  "replay": "リプレイ",
+  "play": "再生",
+  "pause": "一時停止",
+  "session": "セッション"
+}

@@ -1,0 +1,75 @@
+version: 2
+
+project_name: cternal
+
+before:
+  hooks:
+    - npm --prefix frontend install
+    - npm --prefix frontend run build
+
+builds:
+  - id: cternal
+    main: ./cmd/cternal/
+    binary: cternal
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{ .Version }}
+      - -X main.Commit={{ .Commit }}
+      - -X main.BuildDate={{ .Date }}
+
+archives:
+  - id: cternal
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+dockers:
+  - id: cternal-amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/wtnb75/cternal:{{ .Version }}-amd64"
+      - "ghcr.io/wtnb75/cternal:latest-amd64"
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+
+  - id: cternal-arm64
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/wtnb75/cternal:{{ .Version }}-arm64"
+      - "ghcr.io/wtnb75/cternal:latest-arm64"
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/wtnb75/cternal:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/wtnb75/cternal:{{ .Version }}-amd64"
+      - "ghcr.io/wtnb75/cternal:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/wtnb75/cternal:latest"
+    image_templates:
+      - "ghcr.io/wtnb75/cternal:latest-amd64"
+      - "ghcr.io/wtnb75/cternal:latest-arm64"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

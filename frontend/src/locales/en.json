@@ -1,0 +1,21 @@
+{
+  "containers": "Containers",
+  "refresh": "Refresh",
+  "filterByName": "Filter by name",
+  "allStatuses": "All statuses",
+  "running": "Running",
+  "exited": "Exited",
+  "exec": "Exec",
+  "attach": "Attach",
+  "logs": "Logs",
+  "noContainers": "No containers found",
+  "loading": "Loading...",
+  "connected": "Connected",
+  "reconnecting": "Reconnecting…",
+  "downloadCast": "Download .cast",
+  "back": "← Containers",
+  "replay": "Replay",
+  "play": "Play",
+  "pause": "Pause",
+  "session": "Session"
+}

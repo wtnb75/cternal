@@ -1,0 +1,16 @@
+services:
+  cternal:
+    image: ghcr.io/wtnb75/cternal:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CTERNAL_RUNTIME: docker
+      CTERNAL_MAX_SESSIONS: "100"
+      CTERNAL_SESSION_TTL: "3600"
+      CTERNAL_LOG_LEVEL: info
+      CTERNAL_LOG_FORMAT: text
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4318
+      # CTERNAL_WEBHOOK_URL: http://your-webhook-endpoint/
+    restart: unless-stopped

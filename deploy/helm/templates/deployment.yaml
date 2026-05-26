@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-cternal
+  labels:
+    app: cternal
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: cternal
+  template:
+    metadata:
+      labels:
+        app: cternal
+    spec:
+      serviceAccountName: {{ .Release.Name }}-cternal
+      containers:
+        - name: cternal
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: CTERNAL_RUNTIME
+              value: {{ .Values.cternal.runtime | quote }}
+            - name: CTERNAL_MAX_SESSIONS
+              value: {{ .Values.cternal.maxSessions | quote }}
+            - name: CTERNAL_SESSION_TTL
+              value: {{ .Values.cternal.sessionTtl | quote }}
+            - name: CTERNAL_LOG_LEVEL
+              value: {{ .Values.cternal.logLevel | quote }}
+            - name: CTERNAL_LOG_FORMAT
+              value: {{ .Values.cternal.logFormat | quote }}
+            {{- if .Values.cternal.basePath }}
+            - name: CTERNAL_BASE_PATH
+              value: {{ .Values.cternal.basePath | quote }}
+            {{- end }}
+            {{- if .Values.cternal.otelEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.cternal.otelEndpoint | quote }}
+            {{- end }}
+            {{- if .Values.cternal.webhookUrl }}
+            - name: CTERNAL_WEBHOOK_URL
+              value: {{ .Values.cternal.webhookUrl | quote }}
+            {{- end }}
+          {{- if .Values.dockerSocket.enabled }}
+          volumeMounts:
+            - name: docker-sock
+              mountPath: {{ .Values.dockerSocket.path }}
+          {{- end }}
+      {{- if .Values.dockerSocket.enabled }}
+      volumes:
+        - name: docker-sock
+          hostPath:
+            path: {{ .Values.dockerSocket.path }}
+            type: Socket
+      {{- end }}

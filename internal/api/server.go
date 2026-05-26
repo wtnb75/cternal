@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -64,6 +66,11 @@ func (s *Server) Handler() http.Handler {
 	return accessLog(s.mux)
 }
 
+// Store returns the session store (used in tests).
+func (s *Server) Store() *session.Store {
+	return s.store
+}
+
 func accessLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -86,6 +93,16 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack forwards hijacking to the underlying ResponseWriter so that
+// WebSocket upgrades work through the access-log middleware.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("hijack: feature not supported")
+	}
+	return hj.Hijack()
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

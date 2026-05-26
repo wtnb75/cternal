@@ -1,0 +1,50 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/wtnb75/cternal
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: cternal.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# cternal configuration
+cternal:
+  runtime: docker
+  maxSessions: 100
+  sessionTtl: 3600
+  logLevel: info
+  logFormat: text
+  basePath: ""
+  otelEndpoint: ""
+  webhookUrl: ""
+  exportUrl: ""
+
+# Mount Docker socket for docker runtime
+dockerSocket:
+  enabled: true
+  path: /var/run/docker.sock
+
+# Kubernetes RBAC (for k8s runtime)
+rbac:
+  create: true
+
+resources: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

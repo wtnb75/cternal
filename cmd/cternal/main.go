@@ -33,6 +33,27 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(completionCmd)
+}
+
+var completionCmd = &cobra.Command{
+	Use:       "completion [bash|zsh|fish|powershell]",
+	Short:     "Generate shell completion script",
+	ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
+	Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		switch args[0] {
+		case "bash":
+			return rootCmd.GenBashCompletion(cmd.OutOrStdout())
+		case "zsh":
+			return rootCmd.GenZshCompletion(cmd.OutOrStdout())
+		case "fish":
+			return rootCmd.GenFishCompletion(cmd.OutOrStdout(), true)
+		case "powershell":
+			return rootCmd.GenPowerShellCompletionWithDesc(cmd.OutOrStdout())
+		}
+		return nil
+	},
 }
 
 var serveCmd = &cobra.Command{
@@ -99,8 +120,12 @@ func runServe(cmd *cobra.Command) error {
 
 func newRuntime(name string) (runtime.Runtime, error) {
 	switch name {
-	case "docker", "podman", "":
+	case "docker", "":
 		return runtime.NewDockerRuntime()
+	case "podman":
+		return runtime.NewPodmanRuntime()
+	case "k8s", "kubernetes":
+		return runtime.NewK8sRuntime("")
 	default:
 		return nil, fmt.Errorf("unsupported runtime: %s", name)
 	}
