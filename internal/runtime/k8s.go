@@ -180,7 +180,7 @@ func newK8sStream(ctx context.Context, exec remotecommand.Executor) *k8sStream {
 
 	s := &k8sStream{stdin: stdinW, stdout: stdoutR, cancel: cancel}
 	go func() {
-		defer stdoutW.Close()
+		defer func() { _ = stdoutW.Close() }()
 		_ = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 			Stdin:  stdinR,
 			Stdout: stdoutW,

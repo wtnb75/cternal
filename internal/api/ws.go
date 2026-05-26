@@ -38,7 +38,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		slog.Error("ws upgrade", "err", err)
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Cancel any pending TTL countdown (reconnect wins over expiry).
 	s.ttlMgr.CancelTTL(id)
@@ -179,7 +179,7 @@ func (s *Server) runLogsWS(conn *websocket.Conn, r *http.Request, sess *session.
 		_ = writeWS(conn, ErrorMessage{Type: "error", Message: "failed to open logs: " + err.Error()})
 		return
 	}
-	defer logsRC.Close()
+	defer func() { _ = logsRC.Close() }()
 
 	writeCh := make(chan []byte, 64)
 	done := make(chan struct{})

@@ -49,7 +49,7 @@ func runRecord(containerID, runtimeName string, shell []string, outputPath strin
 	if err != nil {
 		return fmt.Errorf("exec: %w", err)
 	}
-	defer strm.Close()
+	defer func() { _ = strm.Close() }()
 
 	rec := recorder.New()
 	fmt.Fprintf(os.Stderr, "Recording %s → %s  (Ctrl+C or Ctrl+D to stop)\n", containerID, outputPath)

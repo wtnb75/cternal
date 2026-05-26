@@ -70,7 +70,7 @@ async function load() {
     if (statusFilter.value) params.set('status', statusFilter.value)
     const res = await fetch('/api/v1/containers?' + params.toString())
     containers.value = await res.json()
-  } catch (e) {
+  } catch {
     error.value = 'Failed to fetch containers'
   } finally {
     loading.value = false
@@ -81,8 +81,8 @@ async function connect(container: Container, mode: 'exec' | 'attach' | 'logs') {
   try {
     const sess = await store.createSession({ containerId: container.id, mode })
     router.push({ name: 'terminal', params: { id: sess.id } })
-  } catch (e: any) {
-    error.value = e.message
+  } catch (err: unknown) {
+    error.value = err instanceof Error ? err.message : String(err)
   }
 }
 

@@ -12,7 +12,7 @@ import (
 
 func TestInit_noEndpoint(t *testing.T) {
 	// Ensure OTEL endpoint is not set → uses no-op providers.
-	os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	require.NoError(t, os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 
 	p, err := telemetry.Init(context.Background(), "test")
 	require.NoError(t, err)
@@ -25,9 +25,9 @@ func TestInit_noEndpoint(t *testing.T) {
 }
 
 func TestInit_customServiceName(t *testing.T) {
-	os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	os.Setenv("OTEL_SERVICE_NAME", "my-service")
-	defer os.Unsetenv("OTEL_SERVICE_NAME")
+	require.NoError(t, os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+	require.NoError(t, os.Setenv("OTEL_SERVICE_NAME", "my-service"))
+	defer func() { require.NoError(t, os.Unsetenv("OTEL_SERVICE_NAME")) }()
 
 	p, err := telemetry.Init(context.Background(), "1.0.0")
 	require.NoError(t, err)

@@ -62,9 +62,9 @@ func TestWebSocket_execSession_output(t *testing.T) {
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws/" + id
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(3*time.Second)))
 	_, msg, err := conn.ReadMessage()
 	require.NoError(t, err)
 
@@ -110,7 +110,7 @@ func TestWebSocket_sendInput(t *testing.T) {
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws/" + id
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	inputMsg, _ := json.Marshal(api.InputMessage{Type: "input", Data: "hello"})
 	require.NoError(t, conn.WriteMessage(websocket.TextMessage, inputMsg))
@@ -155,13 +155,13 @@ func TestWebSocket_attachSession(t *testing.T) {
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws/" + id
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Give WS time to subscribe, then broadcast data
 	time.Sleep(50 * time.Millisecond)
 	sess.Broadcast([]byte("broadcast-data"))
 
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(3*time.Second)))
 	_, msg, err := conn.ReadMessage()
 	require.NoError(t, err)
 
@@ -202,9 +202,9 @@ func TestWebSocket_logsSession(t *testing.T) {
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws/" + id
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(3*time.Second)))
 	_, msg, err := conn.ReadMessage()
 	require.NoError(t, err)
 
@@ -253,7 +253,7 @@ func TestWebSocket_resizeMessage(t *testing.T) {
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws/" + id
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	resizeMsg, _ := json.Marshal(api.ResizeMessage{Type: "resize", Cols: 120, Rows: 30})
 	require.NoError(t, conn.WriteMessage(websocket.TextMessage, resizeMsg))
