@@ -121,6 +121,51 @@ Go HTTP Server (cternal)
         └── k8s.go
 ```
 
+## CLI サブコマンド
+
+| サブコマンド | 説明 |
+|---|---|
+| `serve` | HTTP サーバを起動する（デフォルト動作） |
+| `play <file.cast>` | `.cast` ファイルをターミナルで再生する |
+| `record <container>` | コンテナのターミナルセッションを録画してファイルに保存する |
+| `version` | バージョン情報を表示する |
+| `completion` | シェル補完スクリプトを出力する |
+
+### cternal serve
+
+現在の設定セクションで定義したフラグをすべて受け付ける。引数なしで `cternal` を実行した場合も `serve` として動作する。
+
+### cternal play
+
+```sh
+cternal play [flags] <file.cast>
+```
+
+| フラグ | デフォルト | 説明 |
+|---|---|---|
+| `--speed` | `1.0` | 再生速度（0.5 / 1.0 / 2.0 / 5.0） |
+| `--loop` | `false` | 末尾に達したら先頭に戻る |
+
+サーバ不要。`internal/recorder` の再生エンジンを直接使用してターミナルに出力する。
+
+### cternal record
+
+```sh
+cternal record [flags] <container>
+```
+
+| フラグ | デフォルト | 説明 |
+|---|---|---|
+| `--runtime` | `docker` | コンテナランタイム |
+| `--shell` | （SHELL 環境変数 → `/bin/sh`） | 起動するシェル |
+| `--output`, `-o` | `<container>_<ISO8601>.cast` | 出力ファイルパス |
+
+サーバ不要。`internal/runtime` と `internal/recorder` を直接使用する。Ctrl+D または Ctrl+C で録画を終了してファイルに書き出す。
+
+### cternal version
+
+ビルド時に goreleaser の ldflags で埋め込んだバージョン・コミットハッシュ・ビルド日時を表示する。
+
 ## WebSocket プロトコル
 
 接続: `ws://<host>{BASE_PATH}/ws/sessions/{session_id}`
@@ -315,6 +360,16 @@ cternal --addr :9090 --base-path /cternal --session-store file --session-dir /va
 - 認証: 本バージョンは対象外（ネットワーク境界で保護する前提）
 - 同時セッション数が `CTERNAL_MAX_SESSIONS` を超えた場合は `POST /api/v1/sessions` が 503 を返す
 - 複数ブラウザからの同時アクセスに対してデータ競合が起きない設計とする（セッションストア・録画バッファは排他制御、WebSocket 書き込みはセッションごとに直列化）
+
+## コンテナイメージ
+
+ベースイメージには `gcr.io/distroless/static` を使用する。
+
+- CA 証明書（`/etc/ssl/certs`）が含まれており、Webhook・エクスポート先への HTTPS 接続が追加設定なしで動作する
+- シェルや不要なバイナリを含まないため攻撃面が最小
+- タイムゾーンデータは Go ビルド時に `import _ "time/tzdata"` で埋め込むため、イメージ側の追加ファイルは不要
+
+コンテナイメージに含まれるのはシングルバイナリ（`cternal`）のみ。Docker ソケット・kubeconfig・SSH エージェントソケットはすべてランタイムマウントで提供する。
 
 ## クイックスタート
 

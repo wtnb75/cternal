@@ -18,7 +18,7 @@
 - ロガー: `log/slog`（構造化ログ）
 - HTTP フレームワーク: `net/http`（標準ライブラリ）+ `gorilla/websocket`
 - コンテナ API クライアント: Docker SDK (`github.com/docker/docker/client`)、Podman は Docker 互換 API 使用、K8s は `k8s.io/client-go`
-- CLI: `github.com/spf13/cobra`（サブコマンドなし、`serve` 相当の単一コマンド）
+- CLI: `github.com/spf13/cobra`。サブコマンド: `serve`（HTTP サーバ）、`play`（.cast 再生）、`record`（録画）、`version`、`completion`。引数なしは `serve` として動作する
 - 設定: CLI フラグ > 環境変数 > デフォルト値の順で解決。`github.com/spf13/viper` と cobra の pflag を統合して使用
 - コンテキストは必ず引き回す（`context.Context` を第一引数に）
 - goroutine リークを防ぐため、起動した goroutine は必ず終了を確認できる設計にする。複数 goroutine の管理には `golang.org/x/sync/errgroup` を使い、エラー伝播と context キャンセルを一元化する
