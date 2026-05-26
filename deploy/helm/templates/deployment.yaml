@@ -20,7 +20,7 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: 8080
+            - containerPort: 3000
           env:
             - name: CTERNAL_RUNTIME
               value: {{ .Values.cternal.runtime | quote }}

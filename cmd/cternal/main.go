@@ -20,6 +20,10 @@ var (
 )
 
 func main() {
+	// Default to "serve" when no subcommand is given (or only flags are passed).
+	if len(os.Args) == 1 || (len(os.Args) > 1 && len(os.Args[1]) > 0 && os.Args[1][0] == '-') {
+		os.Args = append([]string{os.Args[0], "serve"}, os.Args[1:]...)
+	}
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -66,7 +70,7 @@ var serveCmd = &cobra.Command{
 
 func init() {
 	serveCmd.Flags().String("host", "0.0.0.0", "Host to listen on")
-	serveCmd.Flags().Int("port", 8080, "Port to listen on")
+	serveCmd.Flags().Int("port", 3000, "Port to listen on")
 	serveCmd.Flags().String("base-path", "", "Base path prefix for all routes")
 	serveCmd.Flags().String("runtime", "docker", "Container runtime (docker, podman, k8s)")
 	serveCmd.Flags().Int("max-sessions", 100, "Maximum number of concurrent sessions")

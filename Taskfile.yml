@@ -10,7 +10,7 @@ tasks:
   default:
     desc: List available tasks
     cmds:
-      - task --list
+      - task --list --sort alphanumeric
     silent: true
 
   # ── ビルド ────────────────────────────────────────────────
@@ -52,7 +52,7 @@ tasks:
       - dev:frontend
 
   dev:go:
-    desc: Start Go server (API + WebSocket) on :8080
+    desc: Start Go server (API + WebSocket) on :3000
     cmds:
       - go run {{.MAIN}}
 
