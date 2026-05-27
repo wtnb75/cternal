@@ -16,8 +16,9 @@ func generateID() string {
 
 func marshalCast(width, height int, events []recorder.Event) ([]byte, error) {
 	hdr := recorder.Header{
-		Width:  width,
-		Height: height,
+		Width:         width,
+		Height:        height,
+		IdleTimeLimit: 1.0, // clamp idle gaps to 1 s for snappy playback
 	}
 	data, err := recorder.Marshal(hdr, events)
 	if err != nil {

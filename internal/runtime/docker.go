@@ -143,6 +143,7 @@ func (d *DockerRuntime) Logs(ctx context.Context, id string, opts LogsOptions) (
 		ShowStderr: true,
 		Follow:     opts.Follow,
 		Since:      since,
+		Timestamps: opts.Timestamps,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("logs: %w", err)

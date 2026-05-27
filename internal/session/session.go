@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"sync"
 
 	"github.com/wtnb75/cternal/internal/recorder"
@@ -138,6 +139,13 @@ func (s *Session) StartStreamPump() {
 				data, err := s.Stream.Read()
 				if err != nil {
 					break
+				}
+				// Non-PTY attach streams produce bare LF (\n) without CR (\r).
+				// xterm.js requires \r\n to move the cursor to column 0.
+				// exec mode uses a PTY which performs this conversion automatically.
+				if s.Mode != ModeExec {
+					data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n")) // avoid double-conversion
+					data = bytes.ReplaceAll(data, []byte("\n"), []byte("\r\n"))
 				}
 				s.Recorder.Add(recorder.EventOutput, string(data))
 				s.Broadcast(data)

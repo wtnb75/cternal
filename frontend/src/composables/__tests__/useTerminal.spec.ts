@@ -1,34 +1,32 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { SearchAddon } from '@xterm/addon-search'
 import { useTerminal } from '../useTerminal'
 
 // vi.hoisted runs before vi.mock factories, so these objects are safe to
 // reference inside the factory closures below.
 const { mockTerm, mockFit, mockSearch } = vi.hoisted(() => ({
   mockTerm: {
-    loadAddon: vi.fn(),
-    open: vi.fn(),
-    write: vi.fn(),
-    dispose: vi.fn(),
-    onData: vi.fn(),
+    loadAddon: vi.fn<(addon: unknown) => void>(),
+    open: vi.fn<(parent: HTMLElement) => void>(),
+    write: vi.fn<(data: string | Uint8Array) => void>(),
+    dispose: vi.fn<() => void>(),
+    onData: vi.fn<(handler: (data: string) => void) => { dispose: () => void }>(),
     cols: 80,
     rows: 24,
   },
-  mockFit: { fit: vi.fn() },
-  mockSearch: { findNext: vi.fn() },
+  mockFit: { fit: vi.fn<() => void>() },
+  mockSearch: { findNext: vi.fn<(term: string) => boolean>() },
 }))
 
 // Use regular functions (not arrow) in vi.fn() so they are valid constructors.
-vi.mock('@xterm/xterm', () => ({ Terminal: vi.fn(function () { return mockTerm }) }))
-vi.mock('@xterm/addon-fit', () => ({ FitAddon: vi.fn(function () { return mockFit }) }))
-vi.mock('@xterm/addon-search', () => ({ SearchAddon: vi.fn(function () { return mockSearch }) }))
+vi.mock('@xterm/xterm', () => ({ Terminal: vi.fn<() => typeof mockTerm>(function () { return mockTerm }) }))
+vi.mock('@xterm/addon-fit', () => ({ FitAddon: vi.fn<() => typeof mockFit>(function () { return mockFit }) }))
+vi.mock('@xterm/addon-search', () => ({ SearchAddon: vi.fn<() => typeof mockSearch>(function () { return mockSearch }) }))
 
 describe('useTerminal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockTerm.onData.mockReturnValue({ dispose: vi.fn() })
+    mockTerm.onData.mockReturnValue({ dispose: vi.fn<() => void>() })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
 
@@ -83,7 +81,7 @@ describe('useTerminal', () => {
   it('onData registers a handler on the terminal', () => {
     const { init, onData } = useTerminal()
     init(document.createElement('div'))
-    const handler = vi.fn()
+    const handler = vi.fn<(data: string) => void>()
     onData(handler)
     expect(mockTerm.onData).toHaveBeenCalledWith(handler)
   })

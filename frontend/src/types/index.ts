@@ -27,6 +27,7 @@ export type WSMessage =
   | { type: 'output'; data: string }
   | { type: 'error'; message: string }
   | { type: 'pong' }
+  | { type: 'exit' }
 
 export type ClientMessage =
   | { type: 'input'; data: string }

@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import type { Mock } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
+import type { Ref } from 'vue'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useTerminal } from '@/composables/useTerminal'
+import type { ClientMessage, WSMessage } from '@/types'
 import TerminalView from '../TerminalView.vue'
 
-vi.mock('@/composables/useWebSocket', () => ({ useWebSocket: vi.fn() }))
-vi.mock('@/composables/useTerminal', () => ({ useTerminal: vi.fn() }))
+vi.mock('@/composables/useWebSocket', () => ({ useWebSocket: vi.fn<typeof useWebSocket>() }))
+vi.mock('@/composables/useTerminal', () => ({ useTerminal: vi.fn<typeof useTerminal>() }))
 
 function makeRouter(id = 'sess-abc') {
   const router = createRouter({
@@ -22,30 +25,30 @@ function makeRouter(id = 'sess-abc') {
 }
 
 describe('TerminalView', () => {
-  let mockSend: ReturnType<typeof vi.fn>
-  let mockConnected: ReturnType<typeof ref<boolean>>
+  let mockSend: Mock<(msg: ClientMessage) => void>
+  let mockConnected: Ref<boolean>
 
   beforeEach(() => {
-    mockSend = vi.fn()
-    mockConnected = ref(true)
+    mockSend = vi.fn<(msg: ClientMessage) => void>()
+    mockConnected = ref<boolean>(true)
 
     vi.mocked(useWebSocket).mockReturnValue({
       connected: mockConnected,
       send: mockSend,
-      disconnect: vi.fn(),
+      disconnect: vi.fn<() => void>(),
     })
     vi.mocked(useTerminal).mockReturnValue({
-      init: vi.fn(),
-      write: vi.fn(),
-      fit: vi.fn(() => ({ cols: 80, rows: 24 })),
-      onData: vi.fn(),
-      search: vi.fn(),
-      dispose: vi.fn(),
+      init: vi.fn<(el: HTMLElement) => void>(),
+      write: vi.fn<(data: string) => void>(),
+      fit: vi.fn<() => { cols: number; rows: number } | null>(() => ({ cols: 80, rows: 24 })),
+      onData: vi.fn<(handler: (data: string) => void) => undefined>(),
+      search: vi.fn<(query: string) => void>(),
+      dispose: vi.fn<() => void>(),
       terminal: () => null,
       termRef: ref(null),
     })
 
-    vi.stubGlobal('fetch', vi.fn())
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>())
     vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
 
@@ -90,7 +93,7 @@ describe('TerminalView', () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'exec' })))
       .mockResolvedValueOnce(new Response(new Blob(['cast-data'])))
-    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:fake') })
+    vi.stubGlobal('URL', { createObjectURL: vi.fn<() => string>(() => 'blob:fake') })
 
     const wrapper = await mountView('sess-abc')
     await flushPromises()
@@ -115,5 +118,34 @@ describe('TerminalView', () => {
     await wrapper.find('button.btn-back').trigger('click')
     await flushPromises() // router.push is async
     expect(wrapper.vm.$router.currentRoute.value.path).toBe('/')
+  })
+
+  it('writes exit banner to terminal when process exits', async () => {
+    // Capture the WS message callback and terminal write spy via mockImplementationOnce.
+    let wsHandler: ((msg: WSMessage) => void) = () => {}
+    vi.mocked(useWebSocket).mockImplementationOnce((_url, cb) => {
+      wsHandler = cb
+      return { connected: mockConnected, send: mockSend, disconnect: vi.fn<() => void>() }
+    })
+
+    const termWrite = vi.fn<(data: string) => void>()
+    vi.mocked(useTerminal).mockImplementationOnce(() => ({
+      init: vi.fn<(el: HTMLElement) => void>(),
+      write: termWrite,
+      fit: vi.fn<() => { cols: number; rows: number } | null>(() => ({ cols: 80, rows: 24 })),
+      onData: vi.fn<(handler: (data: string) => void) => undefined>(),
+      search: vi.fn<(query: string) => void>(),
+      dispose: vi.fn<() => void>(),
+      terminal: () => null,
+      termRef: ref(null),
+    }))
+
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'exec' })))
+    await mountView()
+    await flushPromises()
+
+    wsHandler({ type: 'exit' })
+
+    expect(termWrite).toHaveBeenCalledWith(expect.stringContaining('process exited'))
   })
 })

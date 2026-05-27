@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import type { Mock } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref, nextTick } from 'vue'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { useTerminal } from '@/composables/useTerminal'
 import ReplayView from '../ReplayView.vue'
 
-vi.mock('@/composables/useTerminal', () => ({ useTerminal: vi.fn() }))
+vi.mock('@/composables/useTerminal', () => ({ useTerminal: vi.fn<typeof useTerminal>() }))
 
 const eventsFixture = [
   { Time: 0,          Type: 'o', Data: 'hello ' },
@@ -26,27 +27,27 @@ function makeRouter(id = 'sess-replay') {
 }
 
 describe('ReplayView', () => {
-  let mockWrite: ReturnType<typeof vi.fn>
-  let mockFit: ReturnType<typeof vi.fn>
-  let mockInit: ReturnType<typeof vi.fn>
+  let mockWrite: Mock<(data: string) => void>
+  let mockFit: Mock<() => { cols: number; rows: number } | null>
+  let mockInit: Mock<(el: HTMLElement) => void>
 
   beforeEach(() => {
-    mockWrite = vi.fn()
-    mockFit = vi.fn(() => ({ cols: 80, rows: 24 }))
-    mockInit = vi.fn()
+    mockWrite = vi.fn<(data: string) => void>()
+    mockFit = vi.fn<() => { cols: number; rows: number } | null>(() => ({ cols: 80, rows: 24 }))
+    mockInit = vi.fn<(el: HTMLElement) => void>()
 
     vi.mocked(useTerminal).mockReturnValue({
       init: mockInit,
       write: mockWrite,
       fit: mockFit,
-      onData: vi.fn(),
-      search: vi.fn(),
-      dispose: vi.fn(),
+      onData: vi.fn<(handler: (data: string) => void) => undefined>(),
+      search: vi.fn<(query: string) => void>(),
+      dispose: vi.fn<() => void>(),
       terminal: () => null,
       termRef: ref(null),
     })
 
-    vi.stubGlobal('fetch', vi.fn())
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>())
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.useFakeTimers()
   })

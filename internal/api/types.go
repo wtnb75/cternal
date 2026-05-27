@@ -32,3 +32,8 @@ type ErrorMessage struct {
 type PongMessage struct {
 	Type string `json:"type"` // "pong"
 }
+
+// ExitMessage is sent when the exec'd process terminates.
+type ExitMessage struct {
+	Type string `json:"type"` // "exit"
+}

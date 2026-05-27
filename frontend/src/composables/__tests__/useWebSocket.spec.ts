@@ -42,6 +42,11 @@ class MockWebSocket {
   }
 }
 
+// Convenience accessor with non-null assertion (tests always set up the instances they use)
+function ws(n: number): MockWebSocket {
+  return MockWebSocket.instances[n]!
+}
+
 describe('useWebSocket', () => {
   beforeEach(() => {
     MockWebSocket.instances = []
@@ -59,7 +64,7 @@ describe('useWebSocket', () => {
   it('opens a WebSocket connection immediately', () => {
     useWebSocket('ws://test', () => {})
     expect(MockWebSocket.instances).toHaveLength(1)
-    expect(MockWebSocket.instances[0].url).toBe('ws://test')
+    expect(ws(0).url).toBe('ws://test')
   })
 
   it('connected is false before the socket opens', () => {
@@ -69,35 +74,35 @@ describe('useWebSocket', () => {
 
   it('connected becomes true on open', () => {
     const { connected } = useWebSocket('ws://test', () => {})
-    MockWebSocket.instances[0].simulateOpen()
+    ws(0).simulateOpen()
     expect(connected.value).toBe(true)
   })
 
   it('connected becomes false on close', () => {
     const { connected } = useWebSocket('ws://test', () => {})
-    MockWebSocket.instances[0].simulateOpen()
-    MockWebSocket.instances[0].close()
+    ws(0).simulateOpen()
+    ws(0).close()
     expect(connected.value).toBe(false)
   })
 
   it('delivers parsed JSON messages to the callback', () => {
     const received: unknown[] = []
     useWebSocket('ws://test', msg => received.push(msg))
-    MockWebSocket.instances[0].simulateMessage('{"type":"output","data":"hello"}')
+    ws(0).simulateMessage('{"type":"output","data":"hello"}')
     expect(received).toEqual([{ type: 'output', data: 'hello' }])
   })
 
   it('silently ignores malformed JSON messages', () => {
     const received: unknown[] = []
     useWebSocket('ws://test', msg => received.push(msg))
-    MockWebSocket.instances[0].simulateMessage('not-json{{')
+    ws(0).simulateMessage('not-json{{')
     expect(received).toHaveLength(0)
   })
 
   it('reconnects 2 seconds after close', () => {
     useWebSocket('ws://test', () => {})
-    MockWebSocket.instances[0].simulateOpen()
-    MockWebSocket.instances[0].close()
+    ws(0).simulateOpen()
+    ws(0).close()
 
     vi.advanceTimersByTime(1999)
     expect(MockWebSocket.instances).toHaveLength(1)
@@ -108,12 +113,12 @@ describe('useWebSocket', () => {
   it('resets reconnect count after a successful open', () => {
     useWebSocket('ws://test', () => {})
     // close and reconnect once
-    MockWebSocket.instances[0].simulateOpen()
-    MockWebSocket.instances[0].close()
+    ws(0).simulateOpen()
+    ws(0).close()
     vi.advanceTimersByTime(2000)
     // open the reconnected socket → count resets
-    MockWebSocket.instances[1].simulateOpen()
-    MockWebSocket.instances[1].close()
+    ws(1).simulateOpen()
+    ws(1).close()
     vi.advanceTimersByTime(2000)
     expect(MockWebSocket.instances).toHaveLength(3)
   })
@@ -122,20 +127,20 @@ describe('useWebSocket', () => {
     useWebSocket('ws://test', () => {})
     // Close without opening so reconnectCount accumulates without resetting.
     for (let i = 0; i < 5; i++) {
-      MockWebSocket.instances[i].close()
+      ws(i).close()
       vi.advanceTimersByTime(2000)
     }
     // initial + 5 reconnects = 6 total instances
     expect(MockWebSocket.instances).toHaveLength(6)
     // 6th close: reconnectCount === 5, 5 < 5 is false → no more reconnects
-    MockWebSocket.instances[5].close()
+    ws(5).close()
     vi.advanceTimersByTime(2000)
     expect(MockWebSocket.instances).toHaveLength(6)
   })
 
   it('disconnect prevents reconnection', () => {
     const { disconnect } = useWebSocket('ws://test', () => {})
-    MockWebSocket.instances[0].simulateOpen()
+    ws(0).simulateOpen()
     disconnect()
     vi.advanceTimersByTime(5000)
     expect(MockWebSocket.instances).toHaveLength(1)
@@ -143,29 +148,29 @@ describe('useWebSocket', () => {
 
   it('disconnect sets connected to false', () => {
     const { connected, disconnect } = useWebSocket('ws://test', () => {})
-    MockWebSocket.instances[0].simulateOpen()
+    ws(0).simulateOpen()
     disconnect()
     expect(connected.value).toBe(false)
   })
 
   it('send serializes and transmits the message when OPEN', () => {
     const { send } = useWebSocket('ws://test', () => {})
-    MockWebSocket.instances[0].simulateOpen()
+    ws(0).simulateOpen()
     send({ type: 'input', data: 'hello' })
-    expect(MockWebSocket.instances[0].sent).toEqual(['{"type":"input","data":"hello"}'])
+    expect(ws(0).sent).toEqual(['{"type":"input","data":"hello"}'])
   })
 
   it('send does nothing when socket is not OPEN', () => {
     const { send } = useWebSocket('ws://test', () => {})
     // readyState is CONNECTING — not OPEN
     send({ type: 'ping' })
-    expect(MockWebSocket.instances[0].sent).toHaveLength(0)
+    expect(ws(0).sent).toHaveLength(0)
   })
 
   it('an error triggers close and then reconnect', () => {
     useWebSocket('ws://test', () => {})
-    MockWebSocket.instances[0].simulateOpen()
-    MockWebSocket.instances[0].simulateError()
+    ws(0).simulateOpen()
+    ws(0).simulateError()
     vi.advanceTimersByTime(2000)
     expect(MockWebSocket.instances).toHaveLength(2)
   })

@@ -53,3 +53,17 @@ func (r *Recorder) Len() int {
 func (r *Recorder) All() []Event {
 	return r.EventsSince(0)
 }
+
+// AddAt records an event with an explicit elapsed duration instead of
+// computing it from the wall clock.  Use this for externally timestamped
+// sources such as "docker logs --timestamps" so that playback reflects
+// the real inter-event gaps rather than the ingestion time.
+func (r *Recorder) AddAt(typ EventType, data string, elapsed time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, Event{
+		Time: elapsed,
+		Type: typ,
+		Data: data,
+	})
+}

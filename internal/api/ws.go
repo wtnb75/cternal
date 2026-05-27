@@ -1,11 +1,14 @@
 package api
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -93,6 +96,7 @@ func (s *Server) runExecWS(conn *websocket.Conn, sess *session.Session) {
 
 	// Stream reader: forward container output → WS.
 	go func() {
+		defer close(writeCh)
 		for {
 			data, err := sess.Stream.Read()
 			if err != nil {
@@ -110,7 +114,12 @@ func (s *Server) runExecWS(conn *websocket.Conn, sess *session.Session) {
 				return
 			}
 		}
-		close(writeCh)
+		// Notify the client that the process has exited.
+		exitMsg, _ := json.Marshal(ExitMessage{Type: "exit"})
+		select {
+		case writeCh <- exitMsg:
+		case <-done:
+		}
 	}()
 
 	// Main loop: read WS messages → container.
@@ -175,10 +184,15 @@ func (s *Server) runAttachWS(conn *websocket.Conn, sess *session.Session) {
 }
 
 // runLogsWS drives a logs-mode session: stream container logs read-only.
+// Each log line carries a Docker RFC3339Nano timestamp prefix (Timestamps:true).
+// The prefix is parsed to set accurate playback timing in the recorder, then
+// stripped from the displayed text so the application's own timestamps are
+// shown without duplication.
 func (s *Server) runLogsWS(conn *websocket.Conn, r *http.Request, sess *session.Session) {
-	// Retrieve the since parameter from the session's recorded events, or from creation context.
-	// For logs mode we open a new log stream at WS connect time.
-	logsRC, err := s.rt.Logs(r.Context(), sess.ContainerID, runtime.LogsOptions{Follow: true})
+	logsRC, err := s.rt.Logs(r.Context(), sess.ContainerID, runtime.LogsOptions{
+		Follow:     true,
+		Timestamps: true, // request "RFC3339Nano <message>" prefix per line
+	})
 	if err != nil {
 		_ = writeWS(conn, ErrorMessage{Type: "error", Message: "failed to open logs: " + err.Error()})
 		return
@@ -199,20 +213,44 @@ func (s *Server) runLogsWS(conn *websocket.Conn, r *http.Request, sess *session.
 
 	go func() {
 		defer close(writeCh)
-		buf := make([]byte, 4096)
-		for {
-			n, err := logsRC.Read(buf)
-			if n > 0 {
-				sess.Recorder.Add(recorder.EventOutput, string(buf[:n]))
-				msg, _ := json.Marshal(OutputMessage{Type: "output", Data: string(buf[:n])})
-				select {
-				case writeCh <- msg:
-				case <-done:
-					return
+
+		var epoch time.Time // timestamp of the first log line; zero until set
+
+		sc := bufio.NewScanner(logsRC)
+		sc.Buffer(make([]byte, 1<<20), 1<<20) // 1 MiB — handles long stack traces
+
+		for sc.Scan() {
+			line := sc.Text() // Scanner strips the trailing \n
+
+			// Docker prepends "2006-01-02T15:04:05.999999999Z07:00 " when
+			// Timestamps is true.  Parse it for recorder timing, then strip it
+			// from the display so the app's own timestamps are not duplicated.
+			display := line
+			var elapsed time.Duration
+			if idx := strings.IndexByte(line, ' '); idx > 0 {
+				if ts, parseErr := time.Parse(time.RFC3339Nano, line[:idx]); parseErr == nil {
+					if epoch.IsZero() {
+						epoch = ts
+					}
+					elapsed = ts.Sub(epoch)
+					display = line[idx+1:]
 				}
 			}
-			if err != nil {
-				break
+
+			// Restore the newline (scanner removed it) and convert to CRLF for xterm.js.
+			data := normalizeLF([]byte(display + "\n"))
+
+			if !epoch.IsZero() {
+				sess.Recorder.AddAt(recorder.EventOutput, string(data), elapsed)
+			} else {
+				sess.Recorder.Add(recorder.EventOutput, string(data))
+			}
+
+			msg, _ := json.Marshal(OutputMessage{Type: "output", Data: string(data)})
+			select {
+			case writeCh <- msg:
+			case <-done:
+				return
 			}
 		}
 	}()
@@ -262,4 +300,12 @@ func (s *Server) dispatchMessage(raw []byte, sess *session.Session) {
 func writeWS(conn *websocket.Conn, v any) error {
 	_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	return conn.WriteJSON(v)
+}
+
+// normalizeLF converts bare LF (\n) to CRLF (\r\n) for xterm.js.
+// Non-PTY streams (logs, attach) do not get this conversion from the kernel TTY
+// driver, so it must be applied before sending to the browser terminal.
+func normalizeLF(data []byte) []byte {
+	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n")) // avoid double-conversion
+	return bytes.ReplaceAll(data, []byte("\n"), []byte("\r\n"))
 }

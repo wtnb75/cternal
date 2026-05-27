@@ -125,6 +125,16 @@ tasks:
       - go mod download
       - pnpm --dir frontend install
 
+  # ── クリーン ──────────────────────────────────────────────
+  clean:
+    desc: Remove build artifacts (binary, frontend dist, coverage, ESLint cache)
+    cmds:
+      - rm -rf bin/
+      - rm -rf frontend/dist/
+      - rm -f coverage.out
+      - rm -rf frontend/.eslintcache
+      - rm -rf frontend/coverage/
+
   # ── リリース ──────────────────────────────────────────────
   release:dry:
     desc: Build release snapshot locally without publishing

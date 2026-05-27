@@ -26,7 +26,7 @@ describe('useSessionStore', () => {
       const store = useSessionStore()
       await store.fetchSessions()
       expect(store.sessions).toHaveLength(1)
-      expect(store.sessions[0].id).toBe('sess-1')
+      expect(store.sessions[0]!.id).toBe('sess-1')
     })
 
     it('sets empty list when no sessions exist', async () => {

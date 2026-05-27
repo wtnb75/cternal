@@ -2,6 +2,7 @@ import { ref, onUnmounted } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
+import '@xterm/xterm/css/xterm.css'
 
 export function useTerminal() {
   const termRef = ref<HTMLElement | null>(null)

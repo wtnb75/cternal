@@ -33,7 +33,13 @@ function buildWsUrl(id: string): string {
 }
 
 const { connected, send } = useWebSocket(buildWsUrl(sessionId), (msg: WSMessage) => {
-  if (msg.type === 'output') write(msg.data)
+  if (msg.type === 'output') {
+    write(msg.data)
+  } else if (msg.type === 'exit') {
+    // Write a styled banner directly into the terminal so the user can see it
+    // in context (scroll position, surrounding output, etc.).
+    write('\r\n\x1b[2m\x1b[33m── process exited ──\x1b[0m\r\n')
+  }
 })
 
 function handleResize() {

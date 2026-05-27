@@ -76,10 +76,10 @@ describe('ContainerListView', () => {
     const wrapper = mountView()
     await flushPromises()
     const rows = wrapper.findAll('tbody tr')
-    const btns = rows[1].findAll('button') // second row = stopped
-    expect(btns[0].element.disabled).toBe(true)  // Exec
-    expect(btns[1].element.disabled).toBe(true)  // Attach
-    expect(btns[2].element.disabled).toBe(false) // Logs always enabled
+    const btns = rows[1]!.findAll('button') // second row = stopped
+    expect(btns[0]!.element.disabled).toBe(true)  // Exec
+    expect(btns[1]!.element.disabled).toBe(true)  // Attach
+    expect(btns[2]!.element.disabled).toBe(false) // Logs always enabled
   })
 
   it('Exec and Attach buttons are enabled for running containers', async () => {
@@ -87,9 +87,9 @@ describe('ContainerListView', () => {
     const wrapper = mountView()
     await flushPromises()
     const rows = wrapper.findAll('tbody tr')
-    const btns = rows[0].findAll('button') // first row = running
-    expect(btns[0].element.disabled).toBe(false) // Exec
-    expect(btns[1].element.disabled).toBe(false) // Attach
+    const btns = rows[0]!.findAll('button') // first row = running
+    expect(btns[0]!.element.disabled).toBe(false) // Exec
+    expect(btns[1]!.element.disabled).toBe(false) // Attach
   })
 
   it('navigates to terminal view after successful connect', async () => {
@@ -99,7 +99,7 @@ describe('ContainerListView', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(sess), { status: 201 }))
     const wrapper = mountView()
     await flushPromises()
-    await wrapper.findAll('tbody tr')[0].findAll('button')[0].trigger('click')
+    await wrapper.findAll('tbody tr')[0]!.findAll('button')[0]!.trigger('click')
     await flushPromises()
     expect(wrapper.vm.$router.currentRoute.value.params.id).toBe('s1')
   })
@@ -112,7 +112,7 @@ describe('ContainerListView', () => {
       )
     const wrapper = mountView()
     await flushPromises()
-    await wrapper.findAll('tbody tr')[0].findAll('button')[0].trigger('click')
+    await wrapper.findAll('tbody tr')[0]!.findAll('button')[0]!.trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('container not running')
   })
