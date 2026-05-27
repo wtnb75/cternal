@@ -79,7 +79,11 @@ async function load() {
 
 async function connect(container: Container, mode: 'exec' | 'attach' | 'logs') {
   try {
-    const sess = await store.createSession({ containerId: container.id, mode })
+    const sess = await store.createSession({
+      containerId: container.id,
+      containerName: container.name,
+      mode,
+    })
     router.push({ name: 'terminal', params: { id: sess.id } })
   } catch (err: unknown) {
     error.value = err instanceof Error ? err.message : String(err)

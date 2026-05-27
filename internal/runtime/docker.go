@@ -60,6 +60,8 @@ func (d *DockerRuntime) ListContainers(ctx context.Context, f Filter) ([]Contain
 			Image:   c.Image,
 			Status:  c.Status,
 			Running: c.State == "running",
+			Runtime: "docker",
+			Labels:  c.Labels,
 		})
 	}
 	return result, nil

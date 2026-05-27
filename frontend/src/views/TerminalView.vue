@@ -6,7 +6,8 @@
       <span :class="['status', connected ? 'connected' : 'disconnected']">
         {{ connected ? 'Connected' : 'Reconnecting…' }}
       </span>
-      <button @click="downloadCast" class="btn btn-sm">Download .cast</button>
+      <button @click="router.push(`/sessions/${sessionId}/replay`)" class="btn btn-sm">Replay</button>
+      <button @click="downloadCast" class="btn btn-sm btn-download">Download .cast</button>
     </div>
     <div ref="termEl" class="terminal-container" />
   </div>
@@ -58,7 +59,20 @@ async function downloadCast() {
 
 onMounted(async () => {
   if (!termEl.value) return
-  init(termEl.value)
+
+  // Fetch server config to apply terminal settings (e.g. scrollback).
+  let scrollback: number | undefined
+  try {
+    const cfgRes = await fetch('/api/v1/config')
+    if (cfgRes.ok) {
+      const cfg = await cfgRes.json()
+      if (typeof cfg.scrollback === 'number' && cfg.scrollback > 0) {
+        scrollback = cfg.scrollback
+      }
+    }
+  } catch { /* use useTerminal default */ }
+
+  init(termEl.value, scrollback)
   onData?.((data: string) => send({ type: 'input', data }))
   handleResize()
 

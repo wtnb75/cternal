@@ -2,15 +2,19 @@ package api
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/wtnb75/cternal/internal/runtime"
 	"github.com/wtnb75/cternal/internal/session"
+	"github.com/wtnb75/cternal/internal/webhook"
 )
 
 // Config holds the runtime configuration exposed via GET /api/v1/config.
@@ -19,27 +23,36 @@ type Config struct {
 	MaxSessions int    `json:"maxSessions"`
 	BasePath    string `json:"basePath"`
 	Version     string `json:"version"`
+	Scrollback  int    `json:"scrollback,omitempty"`
+
+	// Not exposed via /api/v1/config.
+	WebhookURLs []string `json:"-"`
+	ExportURL   string   `json:"-"`
 }
 
 // Server wires together all HTTP handlers.
 type Server struct {
-	config   Config
-	rt       runtime.Runtime
-	store    *session.Store
-	ttlMgr   *session.TTLManager
-	mux      *http.ServeMux
-	basePath string
+	config    Config
+	rt        runtime.Runtime
+	store     *session.Store
+	ttlMgr    *session.TTLManager
+	mux       *http.ServeMux
+	basePath  string
+	notifier  *webhook.Notifier
+	exportURL string
 }
 
 // NewServer creates a Server. basePath should be empty or start with "/".
 func NewServer(cfg Config, rt runtime.Runtime, store *session.Store, ttlMgr *session.TTLManager) *Server {
 	s := &Server{
-		config:   cfg,
-		rt:       rt,
-		store:    store,
-		ttlMgr:   ttlMgr,
-		mux:      http.NewServeMux(),
-		basePath: cfg.BasePath,
+		config:    cfg,
+		rt:        rt,
+		store:     store,
+		ttlMgr:    ttlMgr,
+		mux:       http.NewServeMux(),
+		basePath:  cfg.BasePath,
+		notifier:  webhook.New(cfg.WebhookURLs),
+		exportURL: cfg.ExportURL,
 	}
 	s.registerRoutes()
 	return s
@@ -69,6 +82,79 @@ func (s *Server) Handler() http.Handler {
 // Store returns the session store (used in tests).
 func (s *Server) Store() *session.Store {
 	return s.store
+}
+
+// EvictSession closes the session, fires the webhook, and runs auto-export.
+// Called from the TTL manager callback when a session expires.
+func (s *Server) EvictSession(id string) {
+	sess, err := s.store.Get(id)
+	if err != nil {
+		return // already gone
+	}
+	s.evict(sess)
+	slog.Info("session evicted by TTL", "id", id)
+}
+
+// evict performs the common teardown for both DELETE and TTL expiry.
+func (s *Server) evict(sess *session.Session) {
+	s.ttlMgr.Remove(sess.ID)
+	if sess.Stream != nil {
+		_ = sess.Stream.Close()
+	}
+	s.store.Delete(sess.ID)
+	s.notifier.Send(webhook.Payload{
+		Event:     "session.end",
+		SessionID: sess.ID,
+		Container: sess.ContainerID,
+		Mode:      string(sess.Mode),
+	})
+	s.autoExport(sess)
+}
+
+// autoExport marshals the session recording and PUTs it to ExportURL.
+// Runs in a goroutine; failures are logged and never block the caller.
+func (s *Server) autoExport(sess *session.Session) {
+	if s.exportURL == "" {
+		return
+	}
+	events := sess.Recorder.All()
+	width, height := 80, 24
+	for _, ev := range events {
+		if ev.Type == "r" {
+			var c, h int
+			if _, err := fmt.Sscanf(ev.Data, "%dx%d", &c, &h); err == nil {
+				width, height = c, h
+			}
+			break
+		}
+	}
+	data, err := marshalCast(width, height, events)
+	if err != nil {
+		slog.Error("auto-export marshal", "id", sess.ID, "err", err)
+		return
+	}
+	exportURL := s.exportURL
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, exportURL, bytes.NewReader(data))
+		if err != nil {
+			slog.Error("auto-export request", "id", sess.ID, "err", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/x-asciicast")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			slog.Error("auto-export send", "id", sess.ID, "err", err)
+			return
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			slog.Warn("auto-export response", "id", sess.ID, "status", resp.StatusCode)
+		} else {
+			slog.Info("auto-export success", "id", sess.ID, "url", exportURL)
+		}
+	}()
 }
 
 func accessLog(next http.Handler) http.Handler {
@@ -135,6 +221,17 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 		Name:   q.Get("name"),
 		Status: q.Get("status"),
 	}
+	// Support repeated ?label=key=val params.
+	if lbls := q["label"]; len(lbls) > 0 {
+		filter.Labels = make(map[string]string, len(lbls))
+		for _, lbl := range lbls {
+			if idx := strings.IndexByte(lbl, '='); idx >= 0 {
+				filter.Labels[lbl[:idx]] = lbl[idx+1:]
+			} else {
+				filter.Labels[lbl] = ""
+			}
+		}
+	}
 	containers, err := s.rt.ListContainers(r.Context(), filter)
 	if err != nil {
 		slog.Error("list containers", "err", err)
@@ -147,7 +244,12 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, s.store.List())
+		sessions := s.store.List()
+		result := make([]sessionResponse, 0, len(sessions))
+		for _, sess := range sessions {
+			result = append(result, s.buildSessionResponse(sess, r))
+		}
+		writeJSON(w, http.StatusOK, result)
 	case http.MethodPost:
 		s.createSession(w, r)
 	default:
@@ -156,20 +258,26 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 type createSessionRequest struct {
-	ContainerID string          `json:"containerId"`
-	Mode        session.Mode    `json:"mode"`
-	Shell       []string        `json:"shell"`
-	Since       string          `json:"since"`
-	Cols        uint16          `json:"cols"`
-	Rows        uint16          `json:"rows"`
+	ContainerID   string       `json:"containerId"`
+	ContainerName string       `json:"containerName"`
+	Mode          session.Mode `json:"mode"`
+	Shell         []string     `json:"shell"`
+	Since         string       `json:"since"`
+	Cols          uint16       `json:"cols"`
+	Rows          uint16       `json:"rows"`
 }
 
-type createSessionResponse struct {
-	ID          string       `json:"id"`
-	ContainerID string       `json:"containerId"`
-	Mode        session.Mode `json:"mode"`
-	Status      string       `json:"status"`
-	WSURL       string       `json:"wsUrl"`
+type sessionResponse struct {
+	ID            string       `json:"id"`
+	ContainerID   string       `json:"containerId"`
+	ContainerName string       `json:"containerName,omitempty"`
+	Runtime       string       `json:"runtime,omitempty"`
+	Mode          session.Mode `json:"mode"`
+	Status        string       `json:"status"`
+	WSURL         string       `json:"wsUrl"`
+	CreatedAt     string       `json:"createdAt,omitempty"`
+	Cols          uint16       `json:"cols,omitempty"`
+	Rows          uint16       `json:"rows,omitempty"`
 }
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
@@ -189,7 +297,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	// attach mode reuses an existing session for the same container
 	if req.Mode == session.ModeAttach {
 		if existing, err := s.store.GetByContainer(req.ContainerID, session.ModeAttach); err == nil {
-			writeJSON(w, http.StatusOK, s.sessionResponse(existing, r))
+			writeJSON(w, http.StatusOK, s.buildSessionResponse(existing, r))
 			return
 		}
 	}
@@ -223,7 +331,11 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := generateID()
-	sess := session.NewSession(id, req.ContainerID, req.Mode, strm)
+	sess := session.NewSession(id, req.ContainerID, req.Mode, strm,
+		session.WithContainerName(req.ContainerName),
+		session.WithRuntime(s.config.Runtime),
+		session.WithSize(req.Cols, req.Rows),
+	)
 
 	if req.Mode == session.ModeLogs {
 		sess.SetStatus(session.StatusDisconnected) // will be activated on WS connect
@@ -238,21 +350,36 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("session created", "id", id, "container", req.ContainerID, "mode", req.Mode)
-	writeJSON(w, http.StatusCreated, s.sessionResponse(sess, r))
+	s.notifier.Send(webhook.Payload{
+		Event:     "session.start",
+		SessionID: id,
+		Container: req.ContainerID,
+		Mode:      string(req.Mode),
+	})
+	writeJSON(w, http.StatusCreated, s.buildSessionResponse(sess, r))
 }
 
-func (s *Server) sessionResponse(sess *session.Session, r *http.Request) createSessionResponse {
+func (s *Server) buildSessionResponse(sess *session.Session, r *http.Request) sessionResponse {
 	scheme := "ws"
 	if r.TLS != nil {
 		scheme = "wss"
 	}
 	wsURL := fmt.Sprintf("%s://%s%s/ws/%s", scheme, r.Host, s.basePath, sess.ID)
-	return createSessionResponse{
-		ID:          sess.ID,
-		ContainerID: sess.ContainerID,
-		Mode:        sess.Mode,
-		Status:      string(sess.GetStatus()),
-		WSURL:       wsURL,
+	createdAt := ""
+	if !sess.CreatedAt.IsZero() {
+		createdAt = sess.CreatedAt.UTC().Format(time.RFC3339)
+	}
+	return sessionResponse{
+		ID:            sess.ID,
+		ContainerID:   sess.ContainerID,
+		ContainerName: sess.ContainerName,
+		Runtime:       sess.Runtime,
+		Mode:          sess.Mode,
+		Status:        string(sess.GetStatus()),
+		WSURL:         wsURL,
+		CreatedAt:     createdAt,
+		Cols:          sess.Cols,
+		Rows:          sess.Rows,
 	}
 }
 
@@ -287,7 +414,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	case "":
 		switch r.Method {
 		case http.MethodGet:
-			writeJSON(w, http.StatusOK, s.sessionResponse(sess, r))
+			writeJSON(w, http.StatusOK, s.buildSessionResponse(sess, r))
 		case http.MethodDelete:
 			s.deleteSession(w, r, sess)
 		default:
@@ -311,11 +438,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteSession(w http.ResponseWriter, _ *http.Request, sess *session.Session) {
-	s.ttlMgr.Remove(sess.ID)
-	s.store.Delete(sess.ID)
-	if sess.Stream != nil {
-		_ = sess.Stream.Close()
-	}
+	s.evict(sess)
 	slog.Info("session deleted", "id", sess.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -341,7 +464,23 @@ func (s *Server) handleCast(w http.ResponseWriter, _ *http.Request, sess *sessio
 		writeError(w, http.StatusInternalServerError, "failed to marshal cast")
 		return
 	}
+
+	// Build a descriptive filename: <containerName>_<ISO8601>.cast
+	name := sess.ContainerName
+	if name == "" {
+		if len(sess.ContainerID) >= 12 {
+			name = sess.ContainerID[:12]
+		} else {
+			name = sess.ContainerID
+		}
+	}
+	ts := ""
+	if !sess.CreatedAt.IsZero() {
+		ts = "_" + sess.CreatedAt.UTC().Format("20060102T150405Z")
+	}
+	filename := name + ts + ".cast"
+
 	w.Header().Set("Content-Type", "application/x-asciicast")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.cast"`, sess.ID))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	_, _ = w.Write(data)
 }

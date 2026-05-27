@@ -10,10 +10,10 @@ export function useTerminal() {
   let fitAddon: FitAddon | null = null
   let searchAddon: SearchAddon | null = null
 
-  function init(el: HTMLElement) {
+  function init(el: HTMLElement, scrollback?: number) {
     terminal = new Terminal({
       cursorBlink: true,
-      scrollback: 5000,
+      scrollback: scrollback ?? 5000,
       theme: { background: '#1e1e2e' },
     })
     fitAddon = new FitAddon()

@@ -45,7 +45,7 @@ const seekPos = ref(0)
 const playing = ref(false)
 const speed = ref(1)
 
-const { init, write, fit } = useTerminal()
+const { init, write, fit, dispose } = useTerminal()
 
 let playTimer: ReturnType<typeof setTimeout> | null = null
 let playIndex = 0
@@ -103,15 +103,15 @@ function togglePlay() {
 
 function onSeek() {
   stopPlay()
-  // Re-render from start up to seekPos
-  const { init: reinit } = useTerminal()
-  if (termEl.value) {
-    reinit(termEl.value)
-    fit()
-    const outputEvents = events.value.slice(0, seekPos.value).filter(e => e.Type === 'o')
-    for (const ev of outputEvents) {
-      write(ev.Data)
-    }
+  if (!termEl.value) return
+  // Dispose the current terminal and reinitialise on the same element so that
+  // accumulated output is cleared before replaying up to the seek position.
+  dispose()
+  init(termEl.value)
+  fit()
+  const outputEvents = events.value.slice(0, seekPos.value).filter(e => e.Type === 'o')
+  for (const ev of outputEvents) {
+    write(ev.Data)
   }
 }
 

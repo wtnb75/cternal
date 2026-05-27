@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"sync"
+	"time"
 
 	"github.com/wtnb75/cternal/internal/recorder"
 	"github.com/wtnb75/cternal/internal/runtime"
@@ -21,7 +22,7 @@ const (
 type Status string
 
 const (
-	StatusActive      Status = "active"
+	StatusActive       Status = "active"
 	StatusDisconnected Status = "disconnected"
 )
 
@@ -36,28 +37,57 @@ type Subscription struct {
 
 // Session represents a single terminal connection to a container.
 type Session struct {
-	ID          string
-	ContainerID string
-	Mode        Mode
-	Recorder    *recorder.Recorder
-	Stream      runtime.Stream
+	ID            string
+	ContainerID   string
+	ContainerName string
+	Runtime       string
+	Mode          Mode
+	CreatedAt     time.Time
+	Cols          uint16
+	Rows          uint16
+	Recorder      *recorder.Recorder
+	Stream        runtime.Stream
 
-	mu         sync.Mutex
-	status     Status
+	mu          sync.Mutex
+	status      Status
 	subscribers []*Subscription
-	pumpOnce   sync.Once // ensures the stream pump starts exactly once
+	pumpOnce    sync.Once // ensures the stream pump starts exactly once
+}
+
+// SessionOption configures a Session at creation time.
+type SessionOption func(*Session)
+
+// WithContainerName sets the human-readable container name.
+func WithContainerName(name string) SessionOption {
+	return func(s *Session) { s.ContainerName = name }
+}
+
+// WithRuntime sets the runtime identifier (e.g. "docker", "k8s").
+func WithRuntime(rt string) SessionOption {
+	return func(s *Session) { s.Runtime = rt }
+}
+
+// WithSize sets the initial terminal dimensions.
+func WithSize(cols, rows uint16) SessionOption {
+	return func(s *Session) { s.Cols = cols; s.Rows = rows }
 }
 
 // NewSession creates a session in the active state.
-func NewSession(id, containerID string, mode Mode, stream runtime.Stream) *Session {
-	return &Session{
+// Additional metadata may be provided via SessionOption values.
+func NewSession(id, containerID string, mode Mode, stream runtime.Stream, opts ...SessionOption) *Session {
+	s := &Session{
 		ID:          id,
 		ContainerID: containerID,
 		Mode:        mode,
 		Recorder:    recorder.New(),
 		Stream:      stream,
 		status:      StatusActive,
+		CreatedAt:   time.Now().UTC(),
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // GetStatus returns the current lifecycle status.

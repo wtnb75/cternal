@@ -29,12 +29,12 @@ function makeRouter(id = 'sess-replay') {
 describe('ReplayView', () => {
   let mockWrite: Mock<(data: string) => void>
   let mockFit: Mock<() => { cols: number; rows: number } | null>
-  let mockInit: Mock<(el: HTMLElement) => void>
+  let mockInit: Mock<(el: HTMLElement, scrollback?: number) => void>
 
   beforeEach(() => {
     mockWrite = vi.fn<(data: string) => void>()
     mockFit = vi.fn<() => { cols: number; rows: number } | null>(() => ({ cols: 80, rows: 24 }))
-    mockInit = vi.fn<(el: HTMLElement) => void>()
+    mockInit = vi.fn<(el: HTMLElement, scrollback?: number) => void>()
 
     vi.mocked(useTerminal).mockReturnValue({
       init: mockInit,

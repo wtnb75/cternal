@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -77,6 +78,9 @@ func init() {
 	serveCmd.Flags().Int("session-ttl", 3600, "Session TTL in seconds after last disconnect")
 	serveCmd.Flags().String("log-level", "info", "Log level (debug, info, warn, error)")
 	serveCmd.Flags().String("log-format", "text", "Log format (text, json)")
+	serveCmd.Flags().Int("scrollback", 5000, "Terminal scrollback buffer lines")
+	serveCmd.Flags().StringArray("webhook-url", nil, "Webhook URL(s) for session events (repeatable)")
+	serveCmd.Flags().String("export-url", "", "HTTP PUT endpoint for auto-exporting .cast files on session end")
 }
 
 func runServe(cmd *cobra.Command) error {
@@ -90,6 +94,19 @@ func runServe(cmd *cobra.Command) error {
 	runtimeName, _ := cmd.Flags().GetString("runtime")
 	maxSessions, _ := cmd.Flags().GetInt("max-sessions")
 	sessionTTL, _ := cmd.Flags().GetInt("session-ttl")
+	scrollback, _ := cmd.Flags().GetInt("scrollback")
+	webhookURLs, _ := cmd.Flags().GetStringArray("webhook-url")
+	exportURL, _ := cmd.Flags().GetString("export-url")
+
+	// Also accept comma-separated webhook URLs from a single flag value.
+	var flatWebhookURLs []string
+	for _, raw := range webhookURLs {
+		for _, u := range strings.Split(raw, ",") {
+			if u = strings.TrimSpace(u); u != "" {
+				flatWebhookURLs = append(flatWebhookURLs, u)
+			}
+		}
+	}
 
 	rt, err := newRuntime(runtimeName)
 	if err != nil {
@@ -98,13 +115,13 @@ func runServe(cmd *cobra.Command) error {
 
 	store := session.NewStore(maxSessions)
 	ttlDur := time.Duration(sessionTTL) * time.Second
+
+	// srv is assigned after TTLManager is created; the closure captures it by
+	// reference so EvictSession is available when the first TTL fires.
+	var srv *api.Server
 	ttlMgr := session.NewTTLManager(ttlDur, func(id string) {
-		if sess, err := store.Get(id); err == nil {
-			if sess.Stream != nil {
-				_ = sess.Stream.Close()
-			}
-			store.Delete(id)
-			slog.Info("session evicted by TTL", "id", id)
+		if srv != nil {
+			srv.EvictSession(id)
 		}
 	})
 
@@ -113,9 +130,12 @@ func runServe(cmd *cobra.Command) error {
 		MaxSessions: maxSessions,
 		BasePath:    basePath,
 		Version:     Version,
+		Scrollback:  scrollback,
+		WebhookURLs: flatWebhookURLs,
+		ExportURL:   exportURL,
 	}
 
-	srv := api.NewServer(cfg, rt, store, ttlMgr)
+	srv = api.NewServer(cfg, rt, store, ttlMgr)
 	addr := fmt.Sprintf("%s:%d", host, port)
 	slog.Info("cternal starting", "addr", addr, "runtime", runtimeName, "version", Version)
 

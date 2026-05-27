@@ -24,6 +24,13 @@ function makeRouter(id = 'sess-abc') {
   return router
 }
 
+// Convenience: a fetch mock that returns a config response then a session response.
+function mockFetchConfigThenSession(sessionBody = { mode: 'exec' }) {
+  vi.mocked(fetch)
+    .mockResolvedValueOnce(new Response(JSON.stringify({ scrollback: 5000 })))
+    .mockResolvedValueOnce(new Response(JSON.stringify(sessionBody)))
+}
+
 describe('TerminalView', () => {
   let mockSend: Mock<(msg: ClientMessage) => void>
   let mockConnected: Ref<boolean>
@@ -38,7 +45,7 @@ describe('TerminalView', () => {
       disconnect: vi.fn<() => void>(),
     })
     vi.mocked(useTerminal).mockReturnValue({
-      init: vi.fn<(el: HTMLElement) => void>(),
+      init: vi.fn<(el: HTMLElement, scrollback?: number) => void>(),
       write: vi.fn<(data: string) => void>(),
       fit: vi.fn<() => { cols: number; rows: number } | null>(() => ({ cols: 80, rows: 24 })),
       onData: vi.fn<(handler: (data: string) => void) => undefined>(),
@@ -81,9 +88,7 @@ describe('TerminalView', () => {
   })
 
   it('fetches session info on mount to display mode', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ mode: 'exec' })),
-    )
+    mockFetchConfigThenSession({ mode: 'exec' })
     const wrapper = await mountView()
     await flushPromises()
     expect(wrapper.text()).toContain('exec')
@@ -91,20 +96,21 @@ describe('TerminalView', () => {
 
   it('download button triggers cast fetch', async () => {
     vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ scrollback: 5000 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'exec' })))
       .mockResolvedValueOnce(new Response(new Blob(['cast-data'])))
     vi.stubGlobal('URL', { createObjectURL: vi.fn<() => string>(() => 'blob:fake') })
 
     const wrapper = await mountView('sess-abc')
     await flushPromises()
-    await wrapper.find('button.btn-sm').trigger('click')
+    await wrapper.find('button.btn-download').trigger('click')
     await flushPromises()
 
     expect(fetch).toHaveBeenCalledWith('/api/v1/sessions/sess-abc/cast')
   })
 
   it('sends resize message on mount', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'exec' })))
+    mockFetchConfigThenSession()
     await mountView()
     await flushPromises()
     expect(mockSend).toHaveBeenCalledWith(
@@ -113,7 +119,7 @@ describe('TerminalView', () => {
   })
 
   it('back button navigates to /', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'exec' })))
+    mockFetchConfigThenSession()
     const wrapper = await mountView()
     await wrapper.find('button.btn-back').trigger('click')
     await flushPromises() // router.push is async
@@ -130,7 +136,7 @@ describe('TerminalView', () => {
 
     const termWrite = vi.fn<(data: string) => void>()
     vi.mocked(useTerminal).mockImplementationOnce(() => ({
-      init: vi.fn<(el: HTMLElement) => void>(),
+      init: vi.fn<(el: HTMLElement, scrollback?: number) => void>(),
       write: termWrite,
       fit: vi.fn<() => { cols: number; rows: number } | null>(() => ({ cols: 80, rows: 24 })),
       onData: vi.fn<(handler: (data: string) => void) => undefined>(),
@@ -140,7 +146,7 @@ describe('TerminalView', () => {
       termRef: ref(null),
     }))
 
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'exec' })))
+    mockFetchConfigThenSession()
     await mountView()
     await flushPromises()
 
