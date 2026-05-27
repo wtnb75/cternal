@@ -14,11 +14,11 @@ type Filter struct {
 
 // Container holds basic container metadata.
 type Container struct {
-	ID      string
-	Name    string
-	Image   string
-	Status  string
-	Running bool
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Image   string `json:"image"`
+	Status  string `json:"status"`
+	Running bool   `json:"running"`
 }
 
 // ExecOptions configures a docker-exec style connection.
