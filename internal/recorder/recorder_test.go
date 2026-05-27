@@ -146,7 +146,7 @@ func TestMarshal_empty(t *testing.T) {
 
 	var got recorder.Header
 	require.NoError(t, json.Unmarshal([]byte(lines[0]), &got))
-	assert.Equal(t, 3, got.Version)
+	assert.Equal(t, 2, got.Version)
 	assert.Equal(t, 80, got.Width)
 	assert.Equal(t, 24, got.Height)
 }

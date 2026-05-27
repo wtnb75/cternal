@@ -24,7 +24,7 @@ type Env struct {
 // Marshal serialises events to asciicast v3 JSON-lines format.
 // Only "o" (output) events are included in the exported cast file per spec.
 func Marshal(hdr Header, events []Event) ([]byte, error) {
-	hdr.Version = 3
+	hdr.Version = 2
 
 	headerBytes, err := json.Marshal(hdr)
 	if err != nil {

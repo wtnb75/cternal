@@ -41,9 +41,10 @@ type Session struct {
 	Recorder    *recorder.Recorder
 	Stream      runtime.Stream
 
-	mu          sync.Mutex
-	status      Status
+	mu         sync.Mutex
+	status     Status
 	subscribers []*Subscription
+	pumpOnce   sync.Once // ensures the stream pump starts exactly once
 }
 
 // NewSession creates a session in the active state.
@@ -120,4 +121,27 @@ func (s *Session) SubscriberCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.subscribers)
+}
+
+// StartStreamPump starts a goroutine that reads from s.Stream and broadcasts
+// the data to all subscribers.  It is safe to call multiple times; only the
+// first call starts the goroutine (subsequent calls are no-ops).
+// Used by attach-mode sessions where multiple WebSocket connections share one
+// container stream.
+func (s *Session) StartStreamPump() {
+	if s.Stream == nil {
+		return
+	}
+	s.pumpOnce.Do(func() {
+		go func() {
+			for {
+				data, err := s.Stream.Read()
+				if err != nil {
+					break
+				}
+				s.Recorder.Add(recorder.EventOutput, string(data))
+				s.Broadcast(data)
+			}
+		}()
+	})
 }

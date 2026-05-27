@@ -10,6 +10,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 )
 
 // DockerRuntime implements Runtime using the Docker SDK.
@@ -70,6 +71,14 @@ func (d *DockerRuntime) Exec(ctx context.Context, id string, opts ExecOptions) (
 		shell = []string{"/bin/sh"}
 	}
 
+	cols, rows := opts.Cols, opts.Rows
+	if cols == 0 {
+		cols = 80
+	}
+	if rows == 0 {
+		rows = 24
+	}
+
 	execResp, err := d.cli.ContainerExecCreate(ctx, id, container.ExecOptions{
 		AttachStdin:  true,
 		AttachStdout: true,
@@ -87,18 +96,16 @@ func (d *DockerRuntime) Exec(ctx context.Context, id string, opts ExecOptions) (
 		return nil, fmt.Errorf("exec attach: %w", err)
 	}
 
-	if opts.Cols > 0 || opts.Rows > 0 {
-		_ = d.cli.ContainerExecResize(ctx, execResp.ID, container.ResizeOptions{
-			Height: uint(opts.Rows),
-			Width:  uint(opts.Cols),
-		})
-	}
+	_ = d.cli.ContainerExecResize(ctx, execResp.ID, container.ResizeOptions{
+		Height: uint(rows),
+		Width:  uint(cols),
+	})
 
-	return &dockerStream{
-		conn:   resp,
-		execID: execResp.ID,
-		cli:    d.cli,
-	}, nil
+	// Tty=true: Docker daemon sends raw PTY bytes (no multiplex framing).
+	ds := newDockerStream(resp, true)
+	ds.execID = execResp.ID
+	ds.cli = d.cli
+	return ds, nil
 }
 
 func (d *DockerRuntime) Attach(ctx context.Context, id string) (Stream, error) {
@@ -111,7 +118,13 @@ func (d *DockerRuntime) Attach(ctx context.Context, id string) (Stream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("attach: %w", err)
 	}
-	return &dockerStream{conn: resp, cli: d.cli, containerID: id}, nil
+	// ContainerAttach without a Tty container uses Docker's multiplexed framing.
+	// Use stdcopy to demultiplex; this also works correctly for Tty containers
+	// because stdcopy merges stdout+stderr into a single stream.
+	ds := newDockerStream(resp, false)
+	ds.containerID = id
+	ds.cli = d.cli
+	return ds, nil
 }
 
 func (d *DockerRuntime) Logs(ctx context.Context, id string, opts LogsOptions) (io.ReadCloser, error) {
@@ -134,20 +147,51 @@ func (d *DockerRuntime) Logs(ctx context.Context, id string, opts LogsOptions) (
 	if err != nil {
 		return nil, fmt.Errorf("logs: %w", err)
 	}
-	return rc, nil
+	// ContainerLogs always uses Docker's multiplexed framing (even without Tty).
+	// Pipe stdout+stderr through stdcopy so callers receive plain text.
+	pr, pw := io.Pipe()
+	go func() {
+		_, _ = stdcopy.StdCopy(pw, pw, rc)
+		_ = pw.Close()
+		_ = rc.Close()
+	}()
+	return pr, nil
 }
 
 // dockerStream wraps a Docker HijackedResponse as a Stream.
+// When tty=true the daemon sends raw PTY bytes; when false it uses Docker's
+// 8-byte multiplexed framing (stdcopy format).  newDockerStream sets up an
+// io.Pipe + stdcopy.StdCopy goroutine for the non-TTY case so that Read()
+// always returns clean data regardless of the underlying framing.
 type dockerStream struct {
 	conn        dockertypes.HijackedResponse
 	execID      string
 	containerID string
 	cli         *client.Client
+	reader      io.Reader // raw conn.Reader (tty) or demuxed pipe (non-tty)
+}
+
+// newDockerStream builds a dockerStream.  pass tty=true when the exec/attach
+// was created with Tty:true (raw PTY stream); pass tty=false for multiplexed
+// streams (attach without Tty, logs).
+func newDockerStream(conn dockertypes.HijackedResponse, tty bool) *dockerStream {
+	var r io.Reader
+	if tty {
+		r = conn.Reader
+	} else {
+		pr, pw := io.Pipe()
+		go func() {
+			_, _ = stdcopy.StdCopy(pw, pw, conn.Reader)
+			_ = pw.Close()
+		}()
+		r = pr
+	}
+	return &dockerStream{conn: conn, reader: r}
 }
 
 func (s *dockerStream) Read() ([]byte, error) {
 	buf := make([]byte, 4096)
-	n, err := s.conn.Reader.Read(buf)
+	n, err := s.reader.Read(buf)
 	if err != nil {
 		return nil, err
 	}

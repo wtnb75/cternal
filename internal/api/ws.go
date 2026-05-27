@@ -126,9 +126,13 @@ func (s *Server) runExecWS(conn *websocket.Conn, sess *session.Session) {
 }
 
 // runAttachWS drives an attach-mode session: subscribe to broadcast output.
+// The first caller also starts the container-stream pump goroutine.
 func (s *Server) runAttachWS(conn *websocket.Conn, sess *session.Session) {
 	sub := sess.Subscribe()
 	defer sess.Unsubscribe(sub)
+
+	// Start the stream-pump exactly once per session (first WS connection).
+	sess.StartStreamPump()
 
 	writeCh := make(chan []byte, 64)
 	done := make(chan struct{})

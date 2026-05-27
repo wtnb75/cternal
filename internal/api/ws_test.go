@@ -127,6 +127,8 @@ func TestWebSocket_attachSession(t *testing.T) {
 	srv, rt := newTestServer(t)
 
 	ms := &runtime.MockStream{}
+	// Read is called by StartStreamPump; return EOF immediately so the goroutine exits.
+	ms.On("Read").Return(nil, fmt.Errorf("EOF")).Maybe()
 	ms.On("Close").Return(nil)
 	rt.On("Attach", anyCtx(), "ctr-attach").Return(ms, nil)
 
