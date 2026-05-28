@@ -19,6 +19,11 @@ const router = createRouter({
       name: 'replay',
       component: () => import('../views/ReplayView.vue'),
     },
+    {
+      path: '/panes',
+      name: 'panes',
+      component: () => import('../views/PaneView.vue'),
+    },
   ],
 })
 

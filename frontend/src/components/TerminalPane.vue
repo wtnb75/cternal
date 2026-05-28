@@ -1,37 +1,35 @@
 <template>
-  <div class="terminal-view">
-    <div class="toolbar">
-      <span class="session-info">{{ t('session') }}: {{ sessionId }} · {{ mode }}</span>
-      <span :class="['status', connected ? 'connected' : 'disconnected']">
+  <div class="terminal-pane" :class="{ active: isActive }" @mousedown="emit('activate')">
+    <div class="pane-header">
+      <span class="pane-info">{{ sessionId.slice(0, 8) }} · {{ mode || '…' }}</span>
+      <span :class="['pane-status', connected ? 'connected' : 'disconnected']">
         {{ connected ? t('connected') : t('reconnecting') }}
       </span>
-      <button @click="router.push(`/sessions/${sessionId}/replay`)" class="btn btn-sm">{{ t('replay') }}</button>
-      <button @click="downloadCast" class="btn btn-sm btn-download">{{ t('downloadCast') }}</button>
+      <button @click.stop="emit('close')" class="btn-close-pane" :title="t('close')">✕</button>
     </div>
-    <div class="terminal-wrapper">
-      <div ref="termEl" class="terminal-container" />
+    <div class="pane-body">
+      <div ref="termEl" class="pane-terminal" />
       <div v-if="showSearch" class="search-bar">
         <input
           ref="searchInputEl"
           v-model="searchQuery"
-          placeholder="Search…"
+          :placeholder="t('search') + '…'"
           class="search-input"
           @input="doSearch"
           @keydown.enter.exact="doSearch"
           @keydown.shift.enter.prevent="doSearchPrev"
           @keydown.escape.prevent="closeSearch"
         />
-        <button @click="doSearchPrev" class="btn-search-nav" title="Previous (Shift+Enter)">▲</button>
-        <button @click="doSearch" class="btn-search-nav" title="Next (Enter)">▼</button>
-        <button @click="closeSearch" class="btn-search-close" title="Close (Esc)">✕</button>
+        <button @click="doSearchPrev" class="btn-search-nav">▲</button>
+        <button @click="doSearch" class="btn-search-nav">▼</button>
+        <button @click="closeSearch" class="btn-search-close">✕</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTerminal } from '@/composables/useTerminal'
 import { useWebSocket } from '@/composables/useWebSocket'
@@ -39,9 +37,19 @@ import { useConfigStore } from '@/stores/config'
 import { useSettingsStore } from '@/stores/settings'
 import type { WSMessage } from '@/types'
 
-const route = useRoute()
-const router = useRouter()
-const sessionId = route.params.id as string
+const props = defineProps<{
+  sessionId: string
+  paneIndex: number
+  isActive: boolean
+}>()
+const emit = defineEmits<{
+  activate: []
+  close: []
+}>()
+
+const { t } = useI18n()
+const configStore = useConfigStore()
+const settingsStore = useSettingsStore()
 
 const termEl = ref<HTMLElement | null>(null)
 const mode = ref('')
@@ -49,9 +57,6 @@ const showSearch = ref(false)
 const searchQuery = ref('')
 const searchInputEl = ref<HTMLInputElement | null>(null)
 
-const { t } = useI18n()
-const configStore = useConfigStore()
-const settingsStore = useSettingsStore()
 const { init, write, fit, onData, search, searchPrev, setFontSize, setTheme, terminal } = useTerminal()
 
 function buildWsUrl(id: string): string {
@@ -59,26 +64,14 @@ function buildWsUrl(id: string): string {
   return `${proto}//${location.host}/ws/${id}`
 }
 
-const { connected, send } = useWebSocket(buildWsUrl(sessionId), (msg: WSMessage) => {
-  if (msg.type === 'output') {
-    write(msg.data)
-  } else if (msg.type === 'exit') {
-    write('\r\n\x1b[2m\x1b[33m── process exited ──\x1b[0m\r\n')
-  }
+const { connected, send } = useWebSocket(buildWsUrl(props.sessionId), (msg: WSMessage) => {
+  if (msg.type === 'output') write(msg.data)
+  else if (msg.type === 'exit') write('\r\n\x1b[2m\x1b[33m── process exited ──\x1b[0m\r\n')
 })
 
 function handleResize() {
   const size = fit()
   if (size) send({ type: 'resize', ...size })
-}
-
-async function downloadCast() {
-  const res = await fetch(`/api/v1/sessions/${sessionId}/cast`)
-  const blob = await res.blob()
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `${sessionId}.cast`
-  a.click()
 }
 
 function openSearch() {
@@ -92,31 +85,18 @@ function closeSearch() {
   terminal()?.focus()
 }
 
-function doSearch() {
-  if (searchQuery.value) search(searchQuery.value)
-}
+function doSearch() { if (searchQuery.value) search(searchQuery.value) }
+function doSearchPrev() { if (searchQuery.value) searchPrev(searchQuery.value) }
 
-function doSearchPrev() {
-  if (searchQuery.value) searchPrev(searchQuery.value)
-}
+let resizeObserver: ResizeObserver | null = null
 
 onMounted(async () => {
   if (!termEl.value) return
 
   init(termEl.value, configStore.scrollback, settingsStore.fontSize, settingsStore.theme)
-
-  // Keep terminal appearance in sync with settings while this session is open.
-  watch(() => settingsStore.fontSize, (size) => {
-    setFontSize(size)
-    handleResize()
-  })
-  watch(() => settingsStore.theme, (theme) => {
-    setTheme(theme)
-  })
   onData?.((data: string) => send({ type: 'input', data }))
   handleResize()
 
-  // Intercept Ctrl+F / Cmd+F before xterm consumes it.
   terminal()?.attachCustomKeyEventHandler((e: KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'f' && e.type === 'keydown') {
       openSearch()
@@ -129,126 +109,136 @@ onMounted(async () => {
     return true
   })
 
-  window.addEventListener('resize', handleResize)
+  // ResizeObserver handles both window resize and pane layout changes.
+  resizeObserver = new ResizeObserver(() => handleResize())
+  resizeObserver.observe(termEl.value)
 
   try {
-    const res = await fetch(`/api/v1/sessions/${sessionId}`)
+    const res = await fetch(`/api/v1/sessions/${props.sessionId}`)
     const sess = await res.json()
     mode.value = sess.mode
   } catch { /* ignore */ }
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
+  resizeObserver?.disconnect()
 })
+
+// Expose for parent-triggered theme/font updates (via watch in PaneView)
+defineExpose({ setFontSize, setTheme })
 </script>
 
 <style scoped>
-.terminal-view {
+.terminal-pane {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  background: var(--bg-base);
+  overflow: hidden;
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
 }
+.terminal-pane.active { border-color: var(--accent); }
 
-.toolbar {
+.pane-header {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.5rem 1rem;
+  gap: 0.5rem;
+  padding: 0.3rem 0.6rem;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--bg-surface-alt);
   flex-shrink: 0;
+  min-height: 0;
 }
 
-.session-info {
+.pane-info {
+  font-size: 0.75rem;
   color: var(--text-secondary);
-  font-size: 0.85rem;
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.status {
-  font-size: 0.8rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
+.pane-status {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  flex-shrink: 0;
 }
-
 .connected { background: var(--green); color: var(--bg-base); }
 .disconnected { background: var(--red); color: var(--bg-base); }
 
-.terminal-wrapper {
+.btn-close-pane {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.btn-close-pane:hover { color: var(--red); background: var(--bg-surface-alt); }
+
+.pane-body {
   position: relative;
   flex: 1;
   overflow: hidden;
 }
 
-.terminal-container {
+.pane-terminal {
   width: 100%;
   height: 100%;
-  padding: 4px;
+  padding: 2px;
 }
 
 .search-bar {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 6px;
+  right: 6px;
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
   background: var(--bg-surface);
   border: 1px solid var(--bg-surface-alt);
-  border-radius: 6px;
-  padding: 0.3rem 0.4rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  border-radius: 5px;
+  padding: 0.25rem 0.35rem;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
   z-index: 10;
 }
 
 .search-input {
-  width: 200px;
-  padding: 0.25rem 0.4rem;
+  width: 160px;
+  padding: 0.2rem 0.35rem;
   background: var(--bg-base);
   border: 1px solid var(--bg-surface-alt);
-  border-radius: 4px;
+  border-radius: 3px;
   color: var(--text-primary);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   outline: none;
 }
 .search-input:focus { border-color: var(--accent); }
 .search-input::placeholder { color: var(--text-muted); }
 
 .btn-search-nav {
-  padding: 0.2rem 0.4rem;
+  padding: 0.15rem 0.35rem;
   background: var(--bg-surface-alt);
   border: none;
   border-radius: 3px;
   color: var(--text-primary);
   cursor: pointer;
-  font-size: 0.75rem;
-  line-height: 1;
+  font-size: 0.7rem;
 }
 .btn-search-nav:hover { background: var(--text-muted); }
 
 .btn-search-close {
-  padding: 0.2rem 0.4rem;
+  padding: 0.15rem 0.35rem;
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.85rem;
-  line-height: 1;
+  font-size: 0.8rem;
   border-radius: 3px;
 }
 .btn-search-close:hover { color: var(--text-primary); background: var(--bg-surface-alt); }
-
-.btn {
-  padding: 0.3rem 0.7rem;
-  border: none;
-  border-radius: 4px;
-  background: var(--accent);
-  color: var(--bg-base);
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-.btn-sm { padding: 0.2rem 0.5rem; }
 </style>

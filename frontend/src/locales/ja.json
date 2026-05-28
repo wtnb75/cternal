@@ -17,5 +17,18 @@
   "replay": "リプレイ",
   "play": "再生",
   "pause": "一時停止",
-  "session": "セッション"
+  "session": "セッション",
+  "settings": "設定",
+  "theme": "テーマ",
+  "dark": "ダーク",
+  "light": "ライト",
+  "language": "言語",
+  "japanese": "日本語",
+  "english": "English",
+  "fontSize": "フォントサイズ",
+  "failedFetch": "コンテナの取得に失敗しました",
+  "failedConnect": "接続に失敗しました",
+  "close": "閉じる",
+  "search": "検索",
+  "selectContainer": "サイドバーからコンテナを選択"
 }

@@ -12,11 +12,15 @@ const { mockTerm, mockFit, mockSearch } = vi.hoisted(() => ({
     write: vi.fn<(data: string | Uint8Array) => void>(),
     dispose: vi.fn<() => void>(),
     onData: vi.fn<(handler: (data: string) => void) => { dispose: () => void }>(),
+    options: {} as Record<string, unknown>,
     cols: 80,
     rows: 24,
   },
   mockFit: { fit: vi.fn<() => void>() },
-  mockSearch: { findNext: vi.fn<(term: string) => boolean>() },
+  mockSearch: {
+    findNext: vi.fn<(term: string) => boolean>(),
+    findPrevious: vi.fn<(term: string) => boolean>(),
+  },
 }))
 
 // Use regular functions (not arrow) in vi.fn() so they are valid constructors.
@@ -97,6 +101,43 @@ describe('useTerminal', () => {
   it('search is a no-op before init', () => {
     const { search } = useTerminal()
     expect(() => search('anything')).not.toThrow()
+  })
+
+  it('searchPrev calls findPrevious on SearchAddon', () => {
+    const { init, searchPrev } = useTerminal()
+    init(document.createElement('div'))
+    searchPrev('error')
+    expect(mockSearch.findPrevious).toHaveBeenCalledWith('error')
+  })
+
+  it('searchPrev is a no-op before init', () => {
+    const { searchPrev } = useTerminal()
+    expect(() => searchPrev('anything')).not.toThrow()
+  })
+
+  it('setFontSize updates terminal options and calls fit', () => {
+    const { init, setFontSize } = useTerminal()
+    init(document.createElement('div'))
+    setFontSize(18)
+    expect(mockTerm.options.fontSize).toBe(18)
+    expect(mockFit.fit).toHaveBeenCalledTimes(2) // once in init, once in setFontSize
+  })
+
+  it('setFontSize is a no-op before init', () => {
+    const { setFontSize } = useTerminal()
+    expect(() => setFontSize(18)).not.toThrow()
+  })
+
+  it('setTheme updates terminal theme option', () => {
+    const { init, setTheme } = useTerminal()
+    init(document.createElement('div'))
+    setTheme('light')
+    expect((mockTerm.options.theme as { background: string }).background).toBe('#eff1f5')
+  })
+
+  it('setTheme is a no-op before init', () => {
+    const { setTheme } = useTerminal()
+    expect(() => setTheme('light')).not.toThrow()
   })
 
   it('dispose calls terminal.dispose and clears the instance', () => {

@@ -4,9 +4,11 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import type { Ref } from 'vue'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createI18n } from 'vue-i18n'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useTerminal } from '@/composables/useTerminal'
 import type { ClientMessage, WSMessage } from '@/types'
+import en from '@/locales/en.json'
 import TerminalView from '../TerminalView.vue'
 
 vi.mock('@/composables/useWebSocket', () => ({ useWebSocket: vi.fn<typeof useWebSocket>() }))
@@ -14,6 +16,11 @@ vi.mock('@/composables/useTerminal', () => ({ useTerminal: vi.fn<typeof useTermi
 vi.mock('@/stores/config', () => ({
   useConfigStore: () => ({ scrollback: 5000, load: vi.fn<() => Promise<void>>() }),
 }))
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => ({ fontSize: 14 }),
+}))
+
+const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
 
 function makeRouter(id = 'sess-abc') {
   const router = createRouter({
@@ -41,11 +48,14 @@ describe('TerminalView', () => {
       disconnect: vi.fn<() => void>(),
     })
     vi.mocked(useTerminal).mockReturnValue({
-      init: vi.fn<(el: HTMLElement, scrollback?: number) => void>(),
+      init: vi.fn<(el: HTMLElement, scrollback?: number, fontSize?: number) => void>(),
       write: vi.fn<(data: string) => void>(),
       fit: vi.fn<() => { cols: number; rows: number } | null>(() => ({ cols: 80, rows: 24 })),
       onData: vi.fn<(handler: (data: string) => void) => undefined>(),
       search: vi.fn<(query: string) => void>(),
+      searchPrev: vi.fn<(query: string) => void>(),
+      setFontSize: vi.fn<(size: number) => void>(),
+      setTheme: vi.fn<(theme: 'dark' | 'light') => void>(),
       dispose: vi.fn<() => void>(),
       terminal: () => null,
       termRef: ref(null),
@@ -63,7 +73,7 @@ describe('TerminalView', () => {
   async function mountView(id = 'sess-abc') {
     const router = makeRouter(id)
     await router.isReady()
-    return mount(TerminalView, { global: { plugins: [router] } })
+    return mount(TerminalView, { global: { plugins: [router, i18n] } })
   }
 
   it('displays the session ID in the toolbar', async () => {
@@ -126,6 +136,9 @@ describe('TerminalView', () => {
       fit: vi.fn<() => { cols: number; rows: number } | null>(() => ({ cols: 80, rows: 24 })),
       onData: vi.fn<(handler: (data: string) => void) => undefined>(),
       search: vi.fn<(query: string) => void>(),
+      searchPrev: vi.fn<(query: string) => void>(),
+      setFontSize: vi.fn<(size: number) => void>(),
+      setTheme: vi.fn<(theme: 'dark' | 'light') => void>(),
       dispose: vi.fn<() => void>(),
       terminal: () => null,
       termRef: ref(null),

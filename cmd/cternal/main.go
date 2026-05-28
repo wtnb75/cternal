@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/wtnb75/cternal/internal/api"
 	"github.com/wtnb75/cternal/internal/runtime"
 	"github.com/wtnb75/cternal/internal/session"
@@ -39,6 +40,32 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(completionCmd)
+
+	// CTERNAL_* env vars override defaults for every serve flag.
+	viper.SetEnvPrefix("CTERNAL")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.AutomaticEnv()
+
+	f := serveCmd.Flags()
+	f.String("addr", ":3000", "Address to listen on (host:port)")
+	f.String("base-path", "", "Base path prefix for all routes")
+	f.String("runtime", "docker", "Container runtime (docker, podman, k8s)")
+	f.Int("max-sessions", 100, "Maximum number of concurrent sessions")
+	f.Int("session-ttl", 3600, "Session TTL in seconds after last disconnect")
+	f.String("log-level", "info", "Log level (debug, info, warn, error)")
+	f.String("log-format", "text", "Log format (text, json)")
+	f.Int("scrollback", 5000, "Terminal scrollback buffer lines")
+	f.StringArray("webhook-url", nil, "Webhook URL(s) for session events (repeatable)")
+	f.String("export-url", "", "HTTP PUT endpoint for auto-exporting .cast files on session end")
+
+	// Bind simple flags so viper resolves: explicit flag > CTERNAL_* env var > default.
+	for _, name := range []string{
+		"addr", "base-path", "runtime", "max-sessions", "session-ttl",
+		"log-level", "log-format", "scrollback", "export-url",
+	} {
+		_ = viper.BindPFlag(name, f.Lookup(name))
+	}
+	// webhook-url (StringArray) is merged with CTERNAL_WEBHOOK_URL manually in runServe.
 }
 
 var completionCmd = &cobra.Command{
@@ -69,41 +96,26 @@ var serveCmd = &cobra.Command{
 	},
 }
 
-func init() {
-	serveCmd.Flags().String("host", "0.0.0.0", "Host to listen on")
-	serveCmd.Flags().Int("port", 3000, "Port to listen on")
-	serveCmd.Flags().String("base-path", "", "Base path prefix for all routes")
-	serveCmd.Flags().String("runtime", "docker", "Container runtime (docker, podman, k8s)")
-	serveCmd.Flags().Int("max-sessions", 100, "Maximum number of concurrent sessions")
-	serveCmd.Flags().Int("session-ttl", 3600, "Session TTL in seconds after last disconnect")
-	serveCmd.Flags().String("log-level", "info", "Log level (debug, info, warn, error)")
-	serveCmd.Flags().String("log-format", "text", "Log format (text, json)")
-	serveCmd.Flags().Int("scrollback", 5000, "Terminal scrollback buffer lines")
-	serveCmd.Flags().StringArray("webhook-url", nil, "Webhook URL(s) for session events (repeatable)")
-	serveCmd.Flags().String("export-url", "", "HTTP PUT endpoint for auto-exporting .cast files on session end")
-}
-
 func runServe(cmd *cobra.Command) error {
-	logLevel, _ := cmd.Flags().GetString("log-level")
-	logFormat, _ := cmd.Flags().GetString("log-format")
-	setupLogger(logLevel, logFormat)
+	setupLogger(viper.GetString("log-level"), viper.GetString("log-format"))
 
-	host, _ := cmd.Flags().GetString("host")
-	port, _ := cmd.Flags().GetInt("port")
-	basePath, _ := cmd.Flags().GetString("base-path")
-	runtimeName, _ := cmd.Flags().GetString("runtime")
-	maxSessions, _ := cmd.Flags().GetInt("max-sessions")
-	sessionTTL, _ := cmd.Flags().GetInt("session-ttl")
-	scrollback, _ := cmd.Flags().GetInt("scrollback")
-	webhookURLs, _ := cmd.Flags().GetStringArray("webhook-url")
-	exportURL, _ := cmd.Flags().GetString("export-url")
+	addr := viper.GetString("addr")
+	basePath := viper.GetString("base-path")
+	runtimeName := viper.GetString("runtime")
+	maxSessions := viper.GetInt("max-sessions")
+	sessionTTL := viper.GetInt("session-ttl")
+	scrollback := viper.GetInt("scrollback")
+	exportURL := viper.GetString("export-url")
 
-	// Also accept comma-separated webhook URLs from a single flag value.
-	var flatWebhookURLs []string
-	for _, raw := range webhookURLs {
+	// Merge --webhook-url flag values with CTERNAL_WEBHOOK_URL env var.
+	// Both support comma-separated lists.
+	flagURLs, _ := cmd.Flags().GetStringArray("webhook-url")
+	rawURLs := append(flagURLs, strings.Split(os.Getenv("CTERNAL_WEBHOOK_URL"), ",")...)
+	var webhookURLs []string
+	for _, raw := range rawURLs {
 		for _, u := range strings.Split(raw, ",") {
 			if u = strings.TrimSpace(u); u != "" {
-				flatWebhookURLs = append(flatWebhookURLs, u)
+				webhookURLs = append(webhookURLs, u)
 			}
 		}
 	}
@@ -131,12 +143,11 @@ func runServe(cmd *cobra.Command) error {
 		BasePath:    basePath,
 		Version:     Version,
 		Scrollback:  scrollback,
-		WebhookURLs: flatWebhookURLs,
+		WebhookURLs: webhookURLs,
 		ExportURL:   exportURL,
 	}
 
 	srv = api.NewServer(cfg, rt, store, ttlMgr)
-	addr := fmt.Sprintf("%s:%d", host, port)
 	slog.Info("cternal starting", "addr", addr, "runtime", runtimeName, "version", Version)
 
 	return http.ListenAndServe(addr, srv.Handler())

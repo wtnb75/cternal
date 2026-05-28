@@ -18,7 +18,10 @@ export const useSettingsStore = defineStore('settings', () => {
   const language = ref<Language>(load('cternal.language', 'ja'))
   const fontSize = ref<number>(load('cternal.fontSize', 14))
 
-  watch(theme, v => localStorage.setItem('cternal.theme', JSON.stringify(v)))
+  watch(theme, v => {
+    localStorage.setItem('cternal.theme', JSON.stringify(v))
+    applyTheme()
+  })
   watch(language, v => localStorage.setItem('cternal.language', JSON.stringify(v)))
   watch(fontSize, v => localStorage.setItem('cternal.fontSize', JSON.stringify(v)))
 

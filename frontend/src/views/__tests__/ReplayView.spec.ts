@@ -3,10 +3,17 @@ import type { Mock } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref, nextTick } from 'vue'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createI18n } from 'vue-i18n'
 import { useTerminal } from '@/composables/useTerminal'
+import en from '@/locales/en.json'
 import ReplayView from '../ReplayView.vue'
 
+const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
+
 vi.mock('@/composables/useTerminal', () => ({ useTerminal: vi.fn<typeof useTerminal>() }))
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => ({ theme: 'dark', fontSize: 14 }),
+}))
 
 const eventsFixture = [
   { Time: 0,          Type: 'o', Data: 'hello ' },
@@ -42,6 +49,9 @@ describe('ReplayView', () => {
       fit: mockFit,
       onData: vi.fn<(handler: (data: string) => void) => undefined>(),
       search: vi.fn<(query: string) => void>(),
+      searchPrev: vi.fn<(query: string) => void>(),
+      setFontSize: vi.fn<(size: number) => void>(),
+      setTheme: vi.fn<(theme: 'dark' | 'light') => void>(),
       dispose: vi.fn<() => void>(),
       terminal: () => null,
       termRef: ref(null),
@@ -61,7 +71,7 @@ describe('ReplayView', () => {
   async function mountView(id = 'sess-replay') {
     const router = makeRouter(id)
     await router.isReady()
-    return mount(ReplayView, { global: { plugins: [router] }, attachTo: document.body })
+    return mount(ReplayView, { global: { plugins: [router, i18n] }, attachTo: document.body })
   }
 
   it('displays session ID in the toolbar', async () => {

@@ -2,8 +2,8 @@
   <div class="replay-view">
     <div class="toolbar">
       <button @click="router.push(`/sessions/${sessionId}`)" class="btn btn-back">← Terminal</button>
-      <span class="session-info">Replay: {{ sessionId }}</span>
-      <button @click="togglePlay" class="btn">{{ playing ? 'Pause' : 'Play' }}</button>
+      <span class="session-info">{{ t('replay') }}: {{ sessionId }}</span>
+      <button @click="togglePlay" class="btn">{{ playing ? t('pause') : t('play') }}</button>
       <select v-model="speed" class="speed-select">
         <option :value="0.5">0.5×</option>
         <option :value="1">1×</option>
@@ -25,9 +25,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useTerminal } from '@/composables/useTerminal'
+import { useSettingsStore } from '@/stores/settings'
 
 interface RecordedEvent {
   Time: number
@@ -35,9 +37,11 @@ interface RecordedEvent {
   Data: string
 }
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const sessionId = route.params.id as string
+const settingsStore = useSettingsStore()
 
 const termEl = ref<HTMLElement | null>(null)
 const events = ref<RecordedEvent[]>([])
@@ -45,7 +49,7 @@ const seekPos = ref(0)
 const playing = ref(false)
 const speed = ref(1)
 
-const { init, write, fit, dispose } = useTerminal()
+const { init, write, fit, setTheme, dispose } = useTerminal()
 
 let playTimer: ReturnType<typeof setTimeout> | null = null
 let playIndex = 0
@@ -117,8 +121,9 @@ function onSeek() {
 
 onMounted(async () => {
   if (!termEl.value) return
-  init(termEl.value)
+  init(termEl.value, undefined, undefined, settingsStore.theme)
   fit()
+  watch(() => settingsStore.theme, (theme) => setTheme(theme))
 
   try {
     const res = await fetch(`/api/v1/sessions/${sessionId}/events`)
@@ -134,7 +139,7 @@ onUnmounted(stopPlay)
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #1e1e2e;
+  background: var(--bg-base);
 }
 
 .toolbar {
@@ -142,31 +147,31 @@ onUnmounted(stopPlay)
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background: #313244;
-  border-bottom: 1px solid #45475a;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--bg-surface-alt);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
 .session-info {
-  color: #a6adc8;
+  color: var(--text-secondary);
   font-size: 0.85rem;
   flex: 1;
 }
 
-.seek-bar { flex: 2; min-width: 100px; }
+.seek-bar { flex: 2; min-width: 100px; accent-color: var(--accent); }
 
 .speed-select {
   padding: 0.2rem 0.4rem;
-  background: #45475a;
-  color: #cdd6f4;
+  background: var(--bg-surface-alt);
+  color: var(--text-primary);
   border: none;
   border-radius: 4px;
 }
 
 .pos-label {
   font-size: 0.8rem;
-  color: #a6adc8;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
@@ -180,11 +185,11 @@ onUnmounted(stopPlay)
   padding: 0.3rem 0.7rem;
   border: none;
   border-radius: 4px;
-  background: #cba6f7;
-  color: #1e1e2e;
+  background: var(--accent);
+  color: var(--bg-base);
   cursor: pointer;
   font-size: 0.8rem;
 }
 
-.btn-back { background: #45475a; color: #cdd6f4; }
+.btn-back { background: var(--bg-surface-alt); color: var(--text-primary); }
 </style>

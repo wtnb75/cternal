@@ -9,7 +9,7 @@
   "attach": "Attach",
   "logs": "Logs",
   "noContainers": "No containers found",
-  "loading": "Loading...",
+  "loading": "Loading…",
   "connected": "Connected",
   "reconnecting": "Reconnecting…",
   "downloadCast": "Download .cast",
@@ -17,5 +17,18 @@
   "replay": "Replay",
   "play": "Play",
   "pause": "Pause",
-  "session": "Session"
+  "session": "Session",
+  "settings": "Settings",
+  "theme": "Theme",
+  "dark": "Dark",
+  "light": "Light",
+  "language": "Language",
+  "japanese": "日本語",
+  "english": "English",
+  "fontSize": "Font Size",
+  "failedFetch": "Failed to fetch containers",
+  "failedConnect": "Failed to connect",
+  "close": "Close",
+  "search": "Search",
+  "selectContainer": "Select a container from the sidebar"
 }
