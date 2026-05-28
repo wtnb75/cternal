@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -88,7 +89,10 @@ func Init(ctx context.Context, version string) (*Provider, error) {
 		tp = sdktrace.NewTracerProvider(sdktrace.WithResource(res))
 		mp = sdkmetric.NewMeterProvider(sdkmetric.WithResource(res))
 	} else {
-		traceExp, err := otlptracehttp.New(ctx)
+		traceExp, err := otlptracegrpc.New(ctx,
+			otlptracegrpc.WithEndpoint(endpoint),
+			otlptracegrpc.WithTLSCredentials(insecure.NewCredentials()),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("trace exporter: %w", err)
 		}
@@ -97,7 +101,10 @@ func Init(ctx context.Context, version string) (*Provider, error) {
 			sdktrace.WithBatcher(traceExp),
 		)
 
-		metricExp, err := otlpmetrichttp.New(ctx)
+		metricExp, err := otlpmetricgrpc.New(ctx,
+			otlpmetricgrpc.WithEndpoint(endpoint),
+			otlpmetricgrpc.WithTLSCredentials(insecure.NewCredentials()),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("metric exporter: %w", err)
 		}

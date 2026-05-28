@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"github.com/wtnb75/cternal/internal/api"
 	"github.com/wtnb75/cternal/internal/runtime"
 	"github.com/wtnb75/cternal/internal/session"
+	"github.com/wtnb75/cternal/internal/telemetry"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 var (
@@ -99,6 +102,14 @@ var serveCmd = &cobra.Command{
 func runServe(cmd *cobra.Command) error {
 	setupLogger(viper.GetString("log-level"), viper.GetString("log-format"))
 
+	ctx := context.Background()
+	prov, err := telemetry.Init(ctx, Version)
+	if err != nil {
+		slog.Warn("telemetry init failed, continuing without OTel", "err", err)
+	} else {
+		defer prov.Shutdown(ctx)
+	}
+
 	addr := viper.GetString("addr")
 	basePath := viper.GetString("base-path")
 	runtimeName := viper.GetString("runtime")
@@ -150,7 +161,10 @@ func runServe(cmd *cobra.Command) error {
 	srv = api.NewServer(cfg, rt, store, ttlMgr)
 	slog.Info("cternal starting", "addr", addr, "runtime", runtimeName, "version", Version)
 
-	return http.ListenAndServe(addr, srv.Handler())
+	handler := otelhttp.NewHandler(srv.Handler(), "cternal",
+		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
+	)
+	return http.ListenAndServe(addr, handler)
 }
 
 func newRuntime(name string) (runtime.Runtime, error) {

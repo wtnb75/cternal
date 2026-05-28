@@ -58,6 +58,27 @@ func TestNotifier_failureIgnored(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
+func TestNotifier_badURL(t *testing.T) {
+	// "://invalid" is unparseable — triggers http.NewRequestWithContext error.
+	n := webhook.New([]string{"://invalid"})
+	n.Send(webhook.Payload{Event: "session.start"})
+	// Give the goroutine time to complete; no panic or block expected.
+	time.Sleep(50 * time.Millisecond)
+}
+
+func TestNotifier_connectionRefused(t *testing.T) {
+	// Server is closed before Send — triggers client.Do error.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	url := srv.URL
+	srv.Close()
+
+	n := webhook.New([]string{url})
+	n.Send(webhook.Payload{Event: "session.end"})
+	time.Sleep(50 * time.Millisecond)
+}
+
 func TestNotifier_parallelDelivery(t *testing.T) {
 	const count = 3
 	received := make(chan struct{}, count)

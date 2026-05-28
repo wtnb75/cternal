@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/wtnb75/cternal/internal/recorder"
 	"github.com/wtnb75/cternal/internal/runtime"
 	"github.com/wtnb75/cternal/internal/session"
@@ -35,6 +40,15 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
+
+	// Start the session.attach span before upgrading so trace context propagates.
+	wsCtx, span := otel.Tracer("cternal").Start(r.Context(), "session.attach")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("session.id", id),
+		attribute.String("session.mode", string(sess.Mode)),
+	)
+	_ = wsCtx // available for child spans if needed
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -274,6 +288,11 @@ func (s *Server) dispatchMessage(raw []byte, sess *session.Session) {
 	if err := json.Unmarshal(raw, &base); err != nil {
 		return
 	}
+	s.metrics.wsMessages.Add(context.Background(), 1, metric.WithAttributes(
+		attribute.String("direction", "in"),
+		attribute.String("mode", string(sess.Mode)),
+		attribute.String("msg_type", base.Type),
+	))
 	switch base.Type {
 	case "input":
 		var msg InputMessage

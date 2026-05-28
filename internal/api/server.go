@@ -12,6 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/wtnb75/cternal/internal/runtime"
 	"github.com/wtnb75/cternal/internal/session"
 	"github.com/wtnb75/cternal/internal/webhook"
@@ -30,6 +35,24 @@ type Config struct {
 	ExportURL   string   `json:"-"`
 }
 
+type apiMetrics struct {
+	activeSessions  metric.Int64UpDownCounter
+	sessionDuration metric.Float64Histogram
+	wsMessages      metric.Int64Counter
+}
+
+func initMetrics() apiMetrics {
+	meter := otel.GetMeterProvider().Meter("cternal")
+	active, _ := meter.Int64UpDownCounter("cternal.sessions.active",
+		metric.WithDescription("Number of active sessions"))
+	duration, _ := meter.Float64Histogram("cternal.sessions.duration_seconds",
+		metric.WithDescription("Session duration in seconds"),
+		metric.WithUnit("s"))
+	msgs, _ := meter.Int64Counter("cternal.ws.messages_total",
+		metric.WithDescription("Total WebSocket messages"))
+	return apiMetrics{active, duration, msgs}
+}
+
 // Server wires together all HTTP handlers.
 type Server struct {
 	config    Config
@@ -40,6 +63,7 @@ type Server struct {
 	basePath  string
 	notifier  *webhook.Notifier
 	exportURL string
+	metrics   apiMetrics
 }
 
 // NewServer creates a Server. basePath should be empty or start with "/".
@@ -54,6 +78,7 @@ func NewServer(cfg Config, rt runtime.Runtime, store *session.Store, ttlMgr *ses
 		notifier:  webhook.New(cfg.WebhookURLs),
 		exportURL: cfg.ExportURL,
 	}
+	s.metrics = initMetrics()
 	s.registerRoutes()
 	return s
 }
@@ -102,6 +127,17 @@ func (s *Server) evict(sess *session.Session) {
 		_ = sess.Stream.Close()
 	}
 	s.store.Delete(sess.ID)
+
+	ctx := context.Background()
+	attrs := metric.WithAttributes(
+		attribute.String("mode", string(sess.Mode)),
+		attribute.String("runtime", sess.Runtime),
+	)
+	s.metrics.activeSessions.Add(ctx, -1, attrs)
+	if !sess.CreatedAt.IsZero() {
+		s.metrics.sessionDuration.Record(ctx, time.Since(sess.CreatedAt).Seconds(), attrs)
+	}
+
 	s.notifier.Send(webhook.Payload{
 		Event:     "session.end",
 		SessionID: sess.ID,
@@ -135,21 +171,33 @@ func (s *Server) autoExport(sess *session.Session) {
 	}
 	exportURL := s.exportURL
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		spanCtx, span := otel.Tracer("cternal").Start(context.Background(), "recorder.export")
+		defer span.End()
+		span.SetAttributes(
+			attribute.String("session.id", sess.ID),
+			attribute.String("export.url", exportURL),
+		)
+
+		ctx, cancel := context.WithTimeout(spanCtx, 30*time.Second)
 		defer cancel()
 		req, err := http.NewRequestWithContext(ctx, http.MethodPut, exportURL, bytes.NewReader(data))
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			slog.Error("auto-export request", "id", sess.ID, "err", err)
 			return
 		}
 		req.Header.Set("Content-Type", "application/x-asciicast")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			slog.Error("auto-export send", "id", sess.ID, "err", err)
 			return
 		}
 		_ = resp.Body.Close()
 		if resp.StatusCode >= 400 {
+			span.SetStatus(codes.Error, fmt.Sprintf("status %d", resp.StatusCode))
 			slog.Warn("auto-export response", "id", sess.ID, "status", resp.StatusCode)
 		} else {
 			slog.Info("auto-export success", "id", sess.ID, "url", exportURL)
@@ -281,6 +329,9 @@ type sessionResponse struct {
 }
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
+	ctx, span := otel.Tracer("cternal").Start(r.Context(), "session.create")
+	defer span.End()
+
 	var req createSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -293,6 +344,10 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	if req.Mode == "" {
 		req.Mode = session.ModeExec
 	}
+	span.SetAttributes(
+		attribute.String("container.id", req.ContainerID),
+		attribute.String("session.mode", string(req.Mode)),
+	)
 
 	// attach mode reuses an existing session for the same container
 	if req.Mode == session.ModeAttach {
@@ -309,13 +364,17 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Mode {
 	case session.ModeExec:
-		strm, err = s.rt.Exec(r.Context(), req.ContainerID, runtime.ExecOptions{
+		_, rtSpan := otel.Tracer("cternal").Start(ctx, "runtime.exec")
+		strm, err = s.rt.Exec(ctx, req.ContainerID, runtime.ExecOptions{
 			Shell: req.Shell,
 			Cols:  req.Cols,
 			Rows:  req.Rows,
 		})
+		rtSpan.End()
 	case session.ModeAttach:
-		strm, err = s.rt.Attach(r.Context(), req.ContainerID)
+		_, rtSpan := otel.Tracer("cternal").Start(ctx, "runtime.attach")
+		strm, err = s.rt.Attach(ctx, req.ContainerID)
+		rtSpan.End()
 	case session.ModeLogs:
 		// Logs mode uses a read-only stream; the WebSocket handler handles it separately.
 		strm = nil
@@ -325,6 +384,8 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		slog.Error("create stream", "mode", req.Mode, "container", req.ContainerID, "err", err)
 		writeError(w, http.StatusInternalServerError, "failed to connect: "+err.Error())
 		return
@@ -348,6 +409,12 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
+
+	span.SetAttributes(attribute.String("session.id", id))
+	s.metrics.activeSessions.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("mode", string(req.Mode)),
+		attribute.String("runtime", s.config.Runtime),
+	))
 
 	slog.Info("session created", "id", id, "container", req.ContainerID, "mode", req.Mode)
 	s.notifier.Send(webhook.Payload{

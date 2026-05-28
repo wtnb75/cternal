@@ -1,12 +1,14 @@
 package session_test
 
 import (
+	"io"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wtnb75/cternal/internal/runtime"
 	"github.com/wtnb75/cternal/internal/session"
 )
 
@@ -108,6 +110,62 @@ func TestStore_getByContainer(t *testing.T) {
 
 	_, err = store.GetByContainer("ctr-s1", session.ModeAttach)
 	assert.ErrorIs(t, err, session.ErrSessionNotFound)
+}
+
+// ── Session options and lifecycle ─────────────────────────────────────────────
+
+func TestSession_options(t *testing.T) {
+	sess := session.NewSession("s1", "ctr1", session.ModeExec, nil,
+		session.WithContainerName("mycontainer"),
+		session.WithRuntime("docker"),
+		session.WithSize(120, 40),
+	)
+	assert.Equal(t, "mycontainer", sess.ContainerName)
+	assert.Equal(t, "docker", sess.Runtime)
+	assert.Equal(t, uint16(120), sess.Cols)
+	assert.Equal(t, uint16(40), sess.Rows)
+}
+
+func TestSession_getSetStatus(t *testing.T) {
+	sess := newSession("s1")
+	assert.Equal(t, session.StatusActive, sess.GetStatus())
+	sess.SetStatus(session.StatusDisconnected)
+	assert.Equal(t, session.StatusDisconnected, sess.GetStatus())
+}
+
+func TestSession_startStreamPump_nilStream(t *testing.T) {
+	sess := newSession("s1") // stream = nil
+	sess.StartStreamPump()   // must not panic
+}
+
+func TestSession_startStreamPump_deliversData(t *testing.T) {
+	ms := &runtime.MockStream{}
+	ms.On("Read").Return([]byte("hello\nworld"), nil).Once()
+	ms.On("Read").Return(nil, io.EOF).Maybe()
+
+	sess := session.NewSession("s1", "ctr1", session.ModeAttach, ms)
+	sub := sess.Subscribe()
+	sess.StartStreamPump()
+
+	select {
+	case data := <-sub.Ch:
+		// attach mode converts bare \n → \r\n
+		assert.Equal(t, "hello\r\nworld", string(data))
+	case <-time.After(time.Second):
+		t.Fatal("stream pump did not deliver data")
+	}
+	ms.AssertExpectations(t)
+}
+
+func TestSession_startStreamPump_idempotent(t *testing.T) {
+	ms := &runtime.MockStream{}
+	ms.On("Read").Return(nil, io.EOF).Maybe()
+
+	sess := session.NewSession("s1", "ctr1", session.ModeExec, ms)
+	// Calling twice must not start a second goroutine.
+	sess.StartStreamPump()
+	sess.StartStreamPump()
+	ms.AssertExpectations(t)
 }
 
 // ── Session subscribe/unsubscribe ──────────────────────────────────────────────

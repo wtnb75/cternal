@@ -1,16 +1,41 @@
 services:
   cternal:
-    image: ghcr.io/wtnb75/cternal:latest
+    image: ghcr.io/wtnb75/cternal:0.0.0-SNAPSHOT-none-arm64
+    build:
+      context: ..
+      dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "8081:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
+      CTERNAL_ADDR: ":8080"
       CTERNAL_RUNTIME: docker
       CTERNAL_MAX_SESSIONS: "100"
       CTERNAL_SESSION_TTL: "3600"
       CTERNAL_LOG_LEVEL: info
-      CTERNAL_LOG_FORMAT: text
-      # OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4318
+      CTERNAL_LOG_FORMAT: json
+      # OpenTelemetry — traces + metrics → Grafana via otel-lgtm
+      OTEL_SERVICE_NAME: cternal
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-lgtm:4317
       # CTERNAL_WEBHOOK_URL: http://your-webhook-endpoint/
+      # CTERNAL_EXPORT_URL: http://your-storage-endpoint/
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+    depends_on:
+      - otel-lgtm
+    restart: unless-stopped
+
+  # All-in-one OpenTelemetry + Grafana stack for local development.
+  #   Grafana UI    →  http://localhost:3000  (admin / admin)
+  #   OTLP HTTP     →  http://localhost:4318
+  #   OTLP gRPC     →  localhost:4317
+  otel-lgtm:
+    image: grafana/otel-lgtm:latest
+    ports:
+      - "3000:3000"   # Grafana
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
     restart: unless-stopped

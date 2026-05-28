@@ -360,6 +360,319 @@ func TestSessionMethodNotAllowed(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, patchRR.Code)
 }
 
+func TestHandleContainers_methodNotAllowed(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/containers", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+}
+
+func TestHandleContainers_runtimeError(t *testing.T) {
+	srv, rt := newTestServer(t)
+	rt.On("ListContainers", anyCtx(), runtime.Filter{}).
+		Return(nil, fmt.Errorf("docker unavailable"))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/containers", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	rt.AssertExpectations(t)
+}
+
+func TestHandleContainers_withLabelFilter(t *testing.T) {
+	srv, rt := newTestServer(t)
+	rt.On("ListContainers", anyCtx(), runtime.Filter{Labels: map[string]string{"env": "prod", "team": ""}}).
+		Return([]runtime.Container{}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/containers?label=env=prod&label=team", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	rt.AssertExpectations(t)
+}
+
+func TestListSessions_empty(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sessions", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var sessions []any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &sessions))
+	assert.Empty(t, sessions)
+}
+
+func TestListSessions_methodNotAllowed(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/sessions", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+}
+
+func TestHandleSession_notFound(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/nonexistent", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+}
+
+func TestHandleSession_unknownSub(t *testing.T) {
+	srv, rt := newTestServer(t)
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+id+"/unknown", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+}
+
+func TestHandleSession_castMethodNotAllowed(t *testing.T) {
+	srv, rt := newTestServer(t)
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+id+"/cast", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+}
+
+func TestHandleSession_eventsMethodNotAllowed(t *testing.T) {
+	srv, rt := newTestServer(t)
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/"+id+"/events", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+}
+
+func TestCreateSession_maxSessionsReached(t *testing.T) {
+	rt := &runtime.MockRuntime{}
+	store := session.NewStore(1)
+	ttl := session.NewTTLManager(time.Hour, func(id string) { store.Delete(id) })
+	cfg := api.Config{Runtime: "docker", MaxSessions: 1}
+	srv := api.NewServer(cfg, rt, store, ttl)
+
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), mock.AnythingOfType("string"), runtime.ExecOptions{}).Return(ms, nil)
+
+	for i := range 2 {
+		body, _ := json.Marshal(map[string]string{"containerId": fmt.Sprintf("ctr%d", i), "mode": "exec"})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+		rr := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rr, req)
+		if i == 0 {
+			assert.Equal(t, http.StatusCreated, rr.Code)
+		} else {
+			assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+		}
+	}
+}
+
+func TestEvictSession(t *testing.T) {
+	srv, rt := newTestServer(t)
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	srv.EvictSession(id)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+id, nil)
+	getRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(getRR, getReq)
+	assert.Equal(t, http.StatusNotFound, getRR.Code)
+}
+
+func TestEvictSession_notFound(t *testing.T) {
+	srv, _ := newTestServer(t)
+	srv.EvictSession("nonexistent") // must not panic
+}
+
+func TestAutoExport_success(t *testing.T) {
+	received := make(chan string, 1)
+	exportSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received <- r.Method
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer exportSrv.Close()
+
+	rt := &runtime.MockRuntime{}
+	store := session.NewStore(10)
+	ttl := session.NewTTLManager(time.Hour, func(id string) { store.Delete(id) })
+	cfg := api.Config{Runtime: "docker", MaxSessions: 10, ExportURL: exportSrv.URL}
+	srv := api.NewServer(cfg, rt, store, ttl)
+
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/"+id, nil)
+	delRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(delRR, delReq)
+	assert.Equal(t, http.StatusNoContent, delRR.Code)
+
+	select {
+	case method := <-received:
+		assert.Equal(t, http.MethodPut, method)
+	case <-time.After(3 * time.Second):
+		t.Fatal("auto-export not received")
+	}
+}
+
+func TestGetSessionCast_noContainerName(t *testing.T) {
+	srv, rt := newTestServer(t)
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "abc123def456", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "abc123def456", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	castReq := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+id+"/cast", nil)
+	castRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(castRR, castReq)
+	assert.Equal(t, http.StatusOK, castRR.Code)
+	// Falls back to first 12 chars of ContainerID
+	assert.Contains(t, castRR.Header().Get("Content-Disposition"), "abc123def456")
+}
+
+func TestAutoExport_4xxResponse(t *testing.T) {
+	// Verifies that a 4xx from the export server is logged but does not block.
+	exportSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer exportSrv.Close()
+
+	rt := &runtime.MockRuntime{}
+	store := session.NewStore(10)
+	ttl := session.NewTTLManager(time.Hour, func(id string) { store.Delete(id) })
+	cfg := api.Config{Runtime: "docker", MaxSessions: 10, ExportURL: exportSrv.URL}
+	srv := api.NewServer(cfg, rt, store, ttl)
+
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr2", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr2", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/"+id, nil)
+	delRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(delRR, delReq)
+	assert.Equal(t, http.StatusNoContent, delRR.Code)
+
+	// Give goroutine time to finish.
+	time.Sleep(200 * time.Millisecond)
+}
+
+func TestGetSessionCast_withResize(t *testing.T) {
+	// Verifies that a resize event in the recorder is used to set cast dimensions.
+	srv, rt := newTestServer(t)
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{Cols: 120, Rows: 40}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]any{
+		"containerId": "ctr1",
+		"mode":        "exec",
+		"containerName": "web",
+		"cols": 120,
+		"rows": 40,
+	})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	// Inject a resize event directly via the events endpoint
+	sess, err := srv.Store().Get(id)
+	require.NoError(t, err)
+	sess.Recorder.Add("r", "120x40")
+
+	castReq := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+id+"/cast", nil)
+	castRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(castRR, castReq)
+	assert.Equal(t, http.StatusOK, castRR.Code)
+	assert.Contains(t, string(castRR.Body.Bytes()), "120")
+}
+
+func TestStaticHandler_nilFS(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	// StaticFS is nil in tests → http.NotFoundHandler returns 404
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+}
+
 // anyCtx returns a testify argument matcher that accepts any context.
 func anyCtx() interface{} {
 	return mock.MatchedBy(func(ctx context.Context) bool { return ctx != nil })

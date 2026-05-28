@@ -34,3 +34,29 @@ func TestInit_customServiceName(t *testing.T) {
 	assert.NotNil(t, p)
 	p.Shutdown(context.Background())
 }
+
+func TestProviders_tracerAndMeter(t *testing.T) {
+	require.NoError(t, os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+
+	p, err := telemetry.Init(context.Background(), "test")
+	require.NoError(t, err)
+	defer p.Shutdown(context.Background())
+
+	tracer := p.Tracer("test-tracer")
+	assert.NotNil(t, tracer)
+
+	meter := p.Meter("test-meter")
+	assert.NotNil(t, meter)
+}
+
+func TestShutdown_cancelledContext(t *testing.T) {
+	require.NoError(t, os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+
+	p, err := telemetry.Init(context.Background(), "test")
+	require.NoError(t, err)
+
+	// Shutdown with already-cancelled context — must not panic.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	p.Shutdown(ctx)
+}

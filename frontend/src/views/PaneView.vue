@@ -3,7 +3,7 @@
     <template v-for="i in paneStore.count" :key="i">
       <TerminalPane
         v-if="paneStore.sessionIds[i - 1]"
-        :key="paneStore.sessionIds[i - 1]"
+        :key="paneStore.sessionIds[i - 1] ?? i"
         :session-id="paneStore.sessionIds[i - 1]!"
         :pane-index="i - 1"
         :is-active="paneStore.activeIndex === i - 1"
