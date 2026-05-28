@@ -60,11 +60,14 @@ func init() {
 	f.Int("scrollback", 5000, "Terminal scrollback buffer lines")
 	f.StringArray("webhook-url", nil, "Webhook URL(s) for session events (repeatable)")
 	f.String("export-url", "", "HTTP PUT endpoint for auto-exporting .cast files on session end")
+	f.String("podman-host", "", "Podman socket URL (e.g. unix:///run/user/1000/podman/podman.sock)")
+	f.String("kubeconfig", "", "Path to kubeconfig file (default: ~/.kube/config)")
 
 	// Bind simple flags so viper resolves: explicit flag > CTERNAL_* env var > default.
 	for _, name := range []string{
 		"addr", "base-path", "runtime", "max-sessions", "session-ttl",
 		"log-level", "log-format", "scrollback", "export-url",
+		"podman-host", "kubeconfig",
 	} {
 		_ = viper.BindPFlag(name, f.Lookup(name))
 	}
@@ -131,7 +134,9 @@ func runServe(cmd *cobra.Command) error {
 		}
 	}
 
-	rt, err := newRuntime(runtimeName)
+	podmanHost := viper.GetString("podman-host")
+	kubeconfig := viper.GetString("kubeconfig")
+	rt, err := newRuntime(runtimeName, podmanHost, kubeconfig)
 	if err != nil {
 		return fmt.Errorf("runtime: %w", err)
 	}
@@ -167,14 +172,14 @@ func runServe(cmd *cobra.Command) error {
 	return http.ListenAndServe(addr, handler)
 }
 
-func newRuntime(name string) (runtime.Runtime, error) {
+func newRuntime(name, podmanHost, kubeconfig string) (runtime.Runtime, error) {
 	switch name {
 	case "docker", "":
 		return runtime.NewDockerRuntime()
 	case "podman":
-		return runtime.NewPodmanRuntime()
+		return runtime.NewPodmanRuntime(podmanHost)
 	case "k8s", "kubernetes":
-		return runtime.NewK8sRuntime("")
+		return runtime.NewK8sRuntime(kubeconfig, "")
 	default:
 		return nil, fmt.Errorf("unsupported runtime: %s", name)
 	}

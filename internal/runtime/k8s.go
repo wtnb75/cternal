@@ -24,15 +24,20 @@ type K8sRuntime struct {
 	namespace string
 }
 
-// NewK8sRuntime creates a K8sRuntime using in-cluster config if available,
-// falling back to the kubeconfig file.
-func NewK8sRuntime(namespace string) (*K8sRuntime, error) {
+// NewK8sRuntime creates a K8sRuntime.
+// kubeconfig is the path to a kubeconfig file; empty means use in-cluster
+// config first, then ~/.kube/config.  namespace defaults to "default".
+func NewK8sRuntime(kubeconfig, namespace string) (*K8sRuntime, error) {
 	if namespace == "" {
 		namespace = "default"
 	}
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
-		cfg, err = clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile)
+		kubeconfigPath := kubeconfig
+		if kubeconfigPath == "" {
+			kubeconfigPath = clientcmd.RecommendedHomeFile
+		}
+		cfg, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 		if err != nil {
 			return nil, fmt.Errorf("k8s config: %w", err)
 		}

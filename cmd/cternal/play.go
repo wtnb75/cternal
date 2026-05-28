@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/wtnb75/cternal/internal/recorder"
+	"golang.org/x/term"
 )
 
 var playCmd = &cobra.Command{
@@ -36,11 +39,45 @@ func runPlay(path string, speed float64, loop bool) error {
 	}
 
 	done := make(chan struct{})
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sig
+		close(done)
+	}()
+
+	// Raw mode suppresses terminal echo of control-sequence responses (e.g. CPR
+	// replies to ESC[6n that are embedded in recorded output).
+	stdinFd := int(os.Stdin.Fd())
+	if term.IsTerminal(stdinFd) {
+		oldState, err := term.MakeRaw(stdinFd)
+		if err == nil {
+			defer func() { _ = term.Restore(stdinFd, oldState) }()
+		}
+		// Drain any bytes the terminal sends back (e.g. CPR responses) so they
+		// don't accumulate in the input buffer and appear after playback ends.
+		go func() {
+			buf := make([]byte, 256)
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					_, _ = os.Stdin.Read(buf)
+				}
+			}
+		}()
+	}
 
 	for {
 		p := recorder.NewPlayer(events, speed)
 		if err := p.Play(os.Stdout, done); err != nil {
 			return err
+		}
+		select {
+		case <-done:
+			return nil
+		default:
 		}
 		if !loop {
 			break
