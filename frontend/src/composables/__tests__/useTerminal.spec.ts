@@ -8,6 +8,7 @@ const { mockTerm, mockFit, mockSearch } = vi.hoisted(() => ({
   mockTerm: {
     loadAddon: vi.fn<(addon: unknown) => void>(),
     open: vi.fn<(parent: HTMLElement) => void>(),
+    focus: vi.fn<() => void>(),
     write: vi.fn<(data: string | Uint8Array) => void>(),
     dispose: vi.fn<() => void>(),
     onData: vi.fn<(handler: (data: string) => void) => { dispose: () => void }>(),

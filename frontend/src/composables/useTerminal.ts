@@ -22,6 +22,7 @@ export function useTerminal() {
     terminal.loadAddon(searchAddon)
     terminal.open(el)
     fitAddon.fit()
+    terminal.focus()
     termRef.value = el
   }
 

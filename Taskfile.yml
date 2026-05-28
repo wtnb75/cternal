@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://taskfile.dev/schema.json
 
-version: '3'
+version: "3"
 
 vars:
   BINARY: bin/cternal
@@ -25,10 +25,10 @@ tasks:
     cmds:
       - go build -o {{.BINARY}} {{.MAIN}}
     sources:
-      - '**/*.go'
-      - 'frontend/dist/**/*'
+      - "**/*.go"
+      - "frontend/dist/**/*"
     generates:
-      - '{{.BINARY}}'
+      - "{{.BINARY}}"
 
   build:frontend:
     desc: Build Vue frontend (output to frontend/dist)
@@ -36,13 +36,13 @@ tasks:
     cmds:
       - pnpm run build
     sources:
-      - 'src/**/*'
-      - 'index.html'
-      - 'package.json'
-      - 'vite.config.*'
-      - 'tsconfig*.json'
+      - "src/**/*"
+      - "index.html"
+      - "package.json"
+      - "vite.config.*"
+      - "tsconfig*.json"
     generates:
-      - 'dist/**/*'
+      - "dist/**/*"
 
   # ── 開発サーバ ────────────────────────────────────────────
   dev:
@@ -61,6 +61,12 @@ tasks:
     dir: frontend
     cmds:
       - pnpm run dev
+
+  dev:run:
+    desc: Start Go server and Vite dev server concurrently
+    cmds:
+      - task: build:frontend
+      - task: dev:go
 
   # ── テスト ────────────────────────────────────────────────
   test:

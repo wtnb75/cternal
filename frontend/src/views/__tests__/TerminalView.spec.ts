@@ -11,6 +11,9 @@ import TerminalView from '../TerminalView.vue'
 
 vi.mock('@/composables/useWebSocket', () => ({ useWebSocket: vi.fn<typeof useWebSocket>() }))
 vi.mock('@/composables/useTerminal', () => ({ useTerminal: vi.fn<typeof useTerminal>() }))
+vi.mock('@/stores/config', () => ({
+  useConfigStore: () => ({ scrollback: 5000, load: vi.fn<() => Promise<void>>() }),
+}))
 
 function makeRouter(id = 'sess-abc') {
   const router = createRouter({
@@ -22,13 +25,6 @@ function makeRouter(id = 'sess-abc') {
   })
   router.push(`/sessions/${id}`)
   return router
-}
-
-// Convenience: a fetch mock that returns a config response then a session response.
-function mockFetchConfigThenSession(sessionBody = { mode: 'exec' }) {
-  vi.mocked(fetch)
-    .mockResolvedValueOnce(new Response(JSON.stringify({ scrollback: 5000 })))
-    .mockResolvedValueOnce(new Response(JSON.stringify(sessionBody)))
 }
 
 describe('TerminalView', () => {
@@ -88,7 +84,7 @@ describe('TerminalView', () => {
   })
 
   it('fetches session info on mount to display mode', async () => {
-    mockFetchConfigThenSession({ mode: 'exec' })
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'exec' })))
     const wrapper = await mountView()
     await flushPromises()
     expect(wrapper.text()).toContain('exec')
@@ -96,7 +92,6 @@ describe('TerminalView', () => {
 
   it('download button triggers cast fetch', async () => {
     vi.mocked(fetch)
-      .mockResolvedValueOnce(new Response(JSON.stringify({ scrollback: 5000 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'exec' })))
       .mockResolvedValueOnce(new Response(new Blob(['cast-data'])))
     vi.stubGlobal('URL', { createObjectURL: vi.fn<() => string>(() => 'blob:fake') })
@@ -110,20 +105,10 @@ describe('TerminalView', () => {
   })
 
   it('sends resize message on mount', async () => {
-    mockFetchConfigThenSession()
     await mountView()
-    await flushPromises()
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'resize' }),
     )
-  })
-
-  it('back button navigates to /', async () => {
-    mockFetchConfigThenSession()
-    const wrapper = await mountView()
-    await wrapper.find('button.btn-back').trigger('click')
-    await flushPromises() // router.push is async
-    expect(wrapper.vm.$router.currentRoute.value.path).toBe('/')
   })
 
   it('writes exit banner to terminal when process exits', async () => {
@@ -146,7 +131,7 @@ describe('TerminalView', () => {
       termRef: ref(null),
     }))
 
-    mockFetchConfigThenSession()
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'exec' })))
     await mountView()
     await flushPromises()
 

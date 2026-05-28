@@ -1,13 +1,13 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import ContainerListView from '../views/ContainerListView.vue'
+import WelcomeView from '../views/WelcomeView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     {
       path: '/',
-      name: 'containers',
-      component: ContainerListView,
+      name: 'welcome',
+      component: WelcomeView,
     },
     {
       path: '/sessions/:id',

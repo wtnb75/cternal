@@ -1,7 +1,6 @@
 <template>
   <div class="terminal-view">
     <div class="toolbar">
-      <button @click="router.push('/')" class="btn btn-back">← Containers</button>
       <span class="session-info">Session: {{ sessionId }} · {{ mode }}</span>
       <span :class="['status', connected ? 'connected' : 'disconnected']">
         {{ connected ? 'Connected' : 'Reconnecting…' }}
@@ -18,6 +17,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTerminal } from '@/composables/useTerminal'
 import { useWebSocket } from '@/composables/useWebSocket'
+import { useConfigStore } from '@/stores/config'
 import type { WSMessage } from '@/types'
 
 const route = useRoute()
@@ -26,6 +26,7 @@ const sessionId = route.params.id as string
 
 const termEl = ref<HTMLElement | null>(null)
 const mode = ref('')
+const configStore = useConfigStore()
 const { init, write, fit, onData } = useTerminal()
 
 function buildWsUrl(id: string): string {
@@ -60,30 +61,20 @@ async function downloadCast() {
 onMounted(async () => {
   if (!termEl.value) return
 
-  // Fetch server config to apply terminal settings (e.g. scrollback).
-  let scrollback: number | undefined
-  try {
-    const cfgRes = await fetch('/api/v1/config')
-    if (cfgRes.ok) {
-      const cfg = await cfgRes.json()
-      if (typeof cfg.scrollback === 'number' && cfg.scrollback > 0) {
-        scrollback = cfg.scrollback
-      }
-    }
-  } catch { /* use useTerminal default */ }
-
-  init(termEl.value, scrollback)
+  // Init and resize synchronously before any await so WebSocket output
+  // is not lost and the PTY receives the correct window size immediately.
+  init(termEl.value, configStore.scrollback)
   onData?.((data: string) => send({ type: 'input', data }))
   handleResize()
 
-  // Fetch session info for mode display
+  window.addEventListener('resize', handleResize)
+
+  // Fetch session info for mode display (async, non-blocking for terminal)
   try {
     const res = await fetch(`/api/v1/sessions/${sessionId}`)
     const sess = await res.json()
     mode.value = sess.mode
   } catch { /* ignore */ }
-
-  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
