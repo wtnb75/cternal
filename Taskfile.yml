@@ -143,6 +143,6 @@ tasks:
 
   # ── リリース ──────────────────────────────────────────────
   release:dry:
-    desc: Build release snapshot locally without publishing
+    desc: Build release snapshot locally without publishing (skips docker)
     cmds:
-      - goreleaser release --snapshot --clean
+      - goreleaser release --snapshot --clean --skip=docker

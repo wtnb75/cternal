@@ -1,5 +1,6 @@
 FROM gcr.io/distroless/static:nonroot
-COPY cternal /cternal
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/cternal /cternal
 EXPOSE 8080
 USER root
-ENTRYPOINT ["/cternal", "serve"]
+ENTRYPOINT ["/cternal"]

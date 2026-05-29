@@ -27,45 +27,29 @@ builds:
 
 archives:
   - id: cternal
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
+    files: []  # binary only; no LICENSE/README in this repo yet
 
 checksum:
   name_template: "checksums.txt"
 
-dockers:
-  - id: cternal-amd64
-    goos: linux
-    goarch: amd64
-    image_templates:
-      - "ghcr.io/wtnb75/cternal:{{ .Version }}-amd64"
-      - "ghcr.io/wtnb75/cternal:latest-amd64"
+dockers_v2:
+  - id: cternal
     dockerfile: Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-
-  - id: cternal-arm64
-    goos: linux
-    goarch: arm64
-    image_templates:
-      - "ghcr.io/wtnb75/cternal:{{ .Version }}-arm64"
-      - "ghcr.io/wtnb75/cternal:latest-arm64"
-    dockerfile: Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm64"
-
-docker_manifests:
-  - name_template: "ghcr.io/wtnb75/cternal:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/wtnb75/cternal:{{ .Version }}-amd64"
-      - "ghcr.io/wtnb75/cternal:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/wtnb75/cternal:latest"
-    image_templates:
-      - "ghcr.io/wtnb75/cternal:latest-amd64"
-      - "ghcr.io/wtnb75/cternal:latest-arm64"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    images:
+      - ghcr.io/wtnb75/cternal
+    tags:
+      - "{{ .Version }}"
+      - latest
 
 changelog:
   sort: asc
