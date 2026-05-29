@@ -34,7 +34,9 @@ archives:
       - goos: windows
         formats:
           - zip
-    files: []  # binary only; no LICENSE/README in this repo yet
+    files:
+      - LICENSE
+      - README.md
 
 checksum:
   name_template: "checksums.txt"
