@@ -86,8 +86,8 @@ func NewServer(cfg Config, rt runtime.Runtime, store *session.Store, ttlMgr *ses
 func (s *Server) registerRoutes() {
 	bp := s.basePath
 
-	// Static frontend
-	s.mux.Handle(bp+"/", StaticHandler())
+	// Static frontend (SPA: falls back to index.html for unknown paths)
+	s.mux.Handle(bp+"/", StaticHandler(bp))
 
 	// REST API
 	s.mux.HandleFunc(bp+"/api/v1/config", s.handleConfig)

@@ -55,6 +55,7 @@ import { useSessionStore } from '@/stores/session'
 import { usePaneStore, type PaneCount } from '@/stores/pane'
 import type { Container } from '@/types'
 import SettingsModal from './SettingsModal.vue'
+import { apiUrl } from '@/lib/api'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -106,7 +107,7 @@ async function load() {
   try {
     const params = new URLSearchParams()
     if (nameFilter.value) params.set('name', nameFilter.value)
-    const res = await fetch('/api/v1/containers?' + params.toString())
+    const res = await fetch(apiUrl('/api/v1/containers?' + params.toString()))
     containers.value = await res.json()
   } catch {
     error.value = t('failedFetch')

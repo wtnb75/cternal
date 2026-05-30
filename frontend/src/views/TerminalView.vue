@@ -36,6 +36,7 @@ import { useI18n } from 'vue-i18n'
 import { useTerminal } from '@/composables/useTerminal'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useConfigStore } from '@/stores/config'
+import { apiUrl, wsUrl } from '@/lib/api'
 import { useSettingsStore } from '@/stores/settings'
 import type { WSMessage } from '@/types'
 
@@ -54,12 +55,7 @@ const configStore = useConfigStore()
 const settingsStore = useSettingsStore()
 const { init, write, fit, onData, search, searchPrev, setFontSize, setTheme, terminal } = useTerminal()
 
-function buildWsUrl(id: string): string {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${proto}//${location.host}/ws/${id}`
-}
-
-const { connected, send } = useWebSocket(buildWsUrl(sessionId), (msg: WSMessage) => {
+const { connected, send } = useWebSocket(wsUrl(sessionId), (msg: WSMessage) => {
   if (msg.type === 'output') {
     write(msg.data)
   } else if (msg.type === 'exit') {
@@ -73,7 +69,7 @@ function handleResize() {
 }
 
 async function downloadCast() {
-  const res = await fetch(`/api/v1/sessions/${sessionId}/cast`)
+  const res = await fetch(apiUrl(`/api/v1/sessions/${sessionId}/cast`))
   const blob = await res.blob()
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
@@ -132,7 +128,7 @@ onMounted(async () => {
   window.addEventListener('resize', handleResize)
 
   try {
-    const res = await fetch(`/api/v1/sessions/${sessionId}`)
+    const res = await fetch(apiUrl(`/api/v1/sessions/${sessionId}`))
     const sess = await res.json()
     mode.value = sess.mode
   } catch { /* ignore */ }

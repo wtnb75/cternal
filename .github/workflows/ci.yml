@@ -111,17 +111,19 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Install frontend dependencies
-        run: pnpm --dir frontend install --frozen-lockfile
-
-      - name: Build frontend
-        run: pnpm --dir frontend run build
-
       - name: Build Go binaries
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: build --snapshot --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare binaries for Docker
         run: |
           mkdir -p linux/amd64 linux/arm64
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o linux/amd64/cternal ./cmd/cternal/
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o linux/arm64/cternal ./cmd/cternal/
+          cp dist/cternal_linux_amd64_v1/cternal linux/amd64/cternal
+          cp dist/cternal_linux_arm64/cternal linux/arm64/cternal
 
       - name: Docker metadata
         id: meta

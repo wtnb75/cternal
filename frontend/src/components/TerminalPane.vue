@@ -35,6 +35,7 @@ import { useTerminal } from '@/composables/useTerminal'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useConfigStore } from '@/stores/config'
 import { useSettingsStore } from '@/stores/settings'
+import { apiUrl, wsUrl } from '@/lib/api'
 import type { WSMessage } from '@/types'
 
 const props = defineProps<{
@@ -59,12 +60,7 @@ const searchInputEl = ref<HTMLInputElement | null>(null)
 
 const { init, write, fit, onData, search, searchPrev, setFontSize, setTheme, terminal } = useTerminal()
 
-function buildWsUrl(id: string): string {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${proto}//${location.host}/ws/${id}`
-}
-
-const { connected, send } = useWebSocket(buildWsUrl(props.sessionId), (msg: WSMessage) => {
+const { connected, send } = useWebSocket(wsUrl(props.sessionId), (msg: WSMessage) => {
   if (msg.type === 'output') write(msg.data)
   else if (msg.type === 'exit') write('\r\n\x1b[2m\x1b[33m── process exited ──\x1b[0m\r\n')
 })
@@ -114,7 +110,7 @@ onMounted(async () => {
   resizeObserver.observe(termEl.value)
 
   try {
-    const res = await fetch(`/api/v1/sessions/${props.sessionId}`)
+    const res = await fetch(apiUrl(`/api/v1/sessions/${props.sessionId}`))
     const sess = await res.json()
     mode.value = sess.mode
   } catch { /* ignore */ }

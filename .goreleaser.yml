@@ -41,18 +41,6 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-dockers_v2:
-  - id: cternal
-    dockerfile: Dockerfile
-    platforms:
-      - linux/amd64
-      - linux/arm64
-    images:
-      - ghcr.io/wtnb75/cternal
-    tags:
-      - "{{ .Version }}"
-      - latest
-
 changelog:
   sort: asc
   filters:

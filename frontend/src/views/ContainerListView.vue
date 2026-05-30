@@ -51,6 +51,7 @@ import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 import type { Container } from '@/types'
+import { apiUrl } from '@/lib/api'
 
 const router = useRouter()
 const store = useSessionStore()
@@ -68,7 +69,7 @@ async function load() {
     const params = new URLSearchParams()
     if (nameFilter.value) params.set('name', nameFilter.value)
     if (statusFilter.value) params.set('status', statusFilter.value)
-    const res = await fetch('/api/v1/containers?' + params.toString())
+    const res = await fetch(apiUrl('/api/v1/containers?' + params.toString()))
     containers.value = await res.json()
   } catch {
     error.value = 'Failed to fetch containers'

@@ -30,6 +30,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTerminal } from '@/composables/useTerminal'
 import { useSettingsStore } from '@/stores/settings'
+import { apiUrl } from '@/lib/api'
 
 interface RecordedEvent {
   Time: number
@@ -126,7 +127,7 @@ onMounted(async () => {
   watch(() => settingsStore.theme, (theme) => setTheme(theme))
 
   try {
-    const res = await fetch(`/api/v1/sessions/${sessionId}/events`)
+    const res = await fetch(apiUrl(`/api/v1/sessions/${sessionId}/events`))
     events.value = await res.json() ?? []
   } catch { /* ignore */ }
 })
