@@ -30,5 +30,7 @@
   "failedConnect": "接続に失敗しました",
   "close": "閉じる",
   "search": "検索",
-  "selectContainer": "サイドバーからコンテナを選択"
+  "selectContainer": "サイドバーからコンテナを選択",
+  "collapseSidebar": "サイドバーを折り畳む",
+  "expandSidebar": "サイドバーを展開する"
 }
