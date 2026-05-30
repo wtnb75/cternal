@@ -103,7 +103,7 @@ describe('TerminalView', () => {
   it('download button triggers cast fetch', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'exec' })))
-      .mockResolvedValueOnce(new Response(new Blob(['cast-data'])))
+      .mockResolvedValueOnce({ ok: true, blob: () => Promise.resolve(new Blob(['cast-data'])) } as unknown as Response)
     vi.stubGlobal('URL', { createObjectURL: vi.fn<() => string>(() => 'blob:fake') })
 
     const wrapper = await mountView('sess-abc')

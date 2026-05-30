@@ -661,7 +661,7 @@ func TestGetSessionCast_withResize(t *testing.T) {
 	castRR := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(castRR, castReq)
 	assert.Equal(t, http.StatusOK, castRR.Code)
-	assert.Contains(t, string(castRR.Body.Bytes()), "120")
+	assert.Contains(t, castRR.Body.String(), "120")
 }
 
 func TestStaticHandler_nilFS(t *testing.T) {
