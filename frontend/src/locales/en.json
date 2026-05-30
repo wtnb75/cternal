@@ -30,5 +30,7 @@
   "failedConnect": "Failed to connect",
   "close": "Close",
   "search": "Search",
-  "selectContainer": "Select a container from the sidebar"
+  "selectContainer": "Select a container from the sidebar",
+  "collapseSidebar": "Collapse sidebar",
+  "expandSidebar": "Expand sidebar"
 }

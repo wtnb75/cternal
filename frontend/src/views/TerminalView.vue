@@ -49,6 +49,7 @@ const mode = ref('')
 const showSearch = ref(false)
 const searchQuery = ref('')
 const searchInputEl = ref<HTMLInputElement | null>(null)
+let resizeObserver: ResizeObserver | null = null
 
 const { t } = useI18n()
 const configStore = useConfigStore()
@@ -125,7 +126,8 @@ onMounted(async () => {
     return true
   })
 
-  window.addEventListener('resize', handleResize)
+  resizeObserver = new ResizeObserver(() => handleResize())
+  resizeObserver.observe(termEl.value)
 
   try {
     const res = await fetch(apiUrl(`/api/v1/sessions/${sessionId}`))
@@ -135,7 +137,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
+  resizeObserver?.disconnect()
 })
 </script>
 
