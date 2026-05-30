@@ -64,9 +64,14 @@ const { connected, send } = useWebSocket(wsUrl(sessionId), (msg: WSMessage) => {
   }
 })
 
+let resizeTimer: ReturnType<typeof setTimeout> | null = null
 function handleResize() {
-  const size = fit()
-  if (size) send({ type: 'resize', ...size })
+  if (resizeTimer) clearTimeout(resizeTimer)
+  resizeTimer = setTimeout(() => {
+    resizeTimer = null
+    const size = fit()
+    if (size) send({ type: 'resize', ...size })
+  }, 50)
 }
 
 async function downloadCast() {

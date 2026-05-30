@@ -17,25 +17,31 @@ settings.applyTheme()
 
 watch(() => settings.language, (lang) => { locale.value = lang }, { immediate: true })
 
-const sidebarCollapsed = ref(localStorage.getItem('sidebar_collapsed') === '1')
-watch(sidebarCollapsed, (v) => localStorage.setItem('sidebar_collapsed', v ? '1' : '0'))
+const SIDEBAR_KEY = 'sidebar_collapsed'
+const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_KEY) === '1')
+watch(sidebarCollapsed, (v) => { try { localStorage.setItem(SIDEBAR_KEY, v ? '1' : '0') } catch { /* storage unavailable */ } })
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
   nextTick(() => {
-    document.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus()
+    const el =
+      document.querySelector<HTMLElement>('.terminal-pane.active .xterm-helper-textarea') ??
+      document.querySelector<HTMLElement>('.xterm-helper-textarea')
+    el?.focus()
   })
 }
 </script>
 
 <template>
   <div class="app-layout">
-    <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+    <aside id="main-sidebar" class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <ContainerSidebar />
     </aside>
     <button
       class="sidebar-toggle"
       :title="sidebarCollapsed ? t('expandSidebar') : t('collapseSidebar')"
+      :aria-expanded="!sidebarCollapsed"
+      aria-controls="main-sidebar"
       @click="toggleSidebar"
     >{{ sidebarCollapsed ? '›' : '‹' }}</button>
     <main class="main-panel">

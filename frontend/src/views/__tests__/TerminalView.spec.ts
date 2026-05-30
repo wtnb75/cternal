@@ -39,6 +39,7 @@ describe('TerminalView', () => {
   let mockConnected: Ref<boolean>
 
   beforeEach(() => {
+    vi.useFakeTimers()
     mockSend = vi.fn<(msg: ClientMessage) => void>()
     mockConnected = ref<boolean>(true)
 
@@ -66,6 +67,7 @@ describe('TerminalView', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -116,9 +118,45 @@ describe('TerminalView', () => {
 
   it('sends resize message on mount', async () => {
     await mountView()
+    await vi.runAllTimersAsync()
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'resize' }),
     )
+  })
+
+  it('ResizeObserver callback triggers resize message', async () => {
+    let capturedCb: ResizeObserverCallback | null = null
+    const mockObserve = vi.fn<() => void>()
+    class TrackingObserver {
+      constructor(cb: ResizeObserverCallback) { capturedCb = cb }
+      observe = mockObserve
+      unobserve = vi.fn<() => void>()
+      disconnect = vi.fn<() => void>()
+    }
+    vi.stubGlobal('ResizeObserver', TrackingObserver)
+
+    await mountView()
+    mockSend.mockClear()
+
+    capturedCb!([], {} as ResizeObserver)
+
+    await vi.runAllTimersAsync()
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'resize' }))
+  })
+
+  it('disconnects ResizeObserver on unmount', async () => {
+    const mockDisconnect = vi.fn<() => void>()
+    class TrackingObserver {
+      observe = vi.fn<() => void>()
+      unobserve = vi.fn<() => void>()
+      disconnect = mockDisconnect
+    }
+    vi.stubGlobal('ResizeObserver', TrackingObserver)
+
+    const wrapper = await mountView()
+    wrapper.unmount()
+
+    expect(mockDisconnect).toHaveBeenCalledOnce()
   })
 
   it('writes exit banner to terminal when process exits', async () => {

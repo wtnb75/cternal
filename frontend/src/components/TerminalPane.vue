@@ -65,9 +65,14 @@ const { connected, send } = useWebSocket(wsUrl(props.sessionId), (msg: WSMessage
   else if (msg.type === 'exit') write('\r\n\x1b[2m\x1b[33m── process exited ──\x1b[0m\r\n')
 })
 
+let resizeTimer: ReturnType<typeof setTimeout> | null = null
 function handleResize() {
-  const size = fit()
-  if (size) send({ type: 'resize', ...size })
+  if (resizeTimer) clearTimeout(resizeTimer)
+  resizeTimer = setTimeout(() => {
+    resizeTimer = null
+    const size = fit()
+    if (size) send({ type: 'resize', ...size })
+  }, 50)
 }
 
 function openSearch() {
