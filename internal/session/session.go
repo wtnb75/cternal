@@ -41,6 +41,7 @@ type Session struct {
 	ContainerID   string
 	ContainerName string
 	Runtime       string
+	User          string
 	Mode          Mode
 	CreatedAt     time.Time
 	Cols          uint16
@@ -65,6 +66,11 @@ func WithContainerName(name string) SessionOption {
 // WithRuntime sets the runtime identifier (e.g. "docker", "k8s").
 func WithRuntime(rt string) SessionOption {
 	return func(s *Session) { s.Runtime = rt }
+}
+
+// WithUser sets the login username extracted from the configured request header.
+func WithUser(user string) SessionOption {
+	return func(s *Session) { s.User = user }
 }
 
 // WithSize sets the initial terminal dimensions.
