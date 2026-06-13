@@ -18,6 +18,8 @@
   "play": "Play",
   "pause": "Pause",
   "session": "Session",
+  "user": "User",
+  "logout": "Log out",
   "settings": "Settings",
   "theme": "Theme",
   "dark": "Dark",

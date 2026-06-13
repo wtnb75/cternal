@@ -29,10 +29,20 @@ type Config struct {
 	BasePath    string `json:"basePath"`
 	Version     string `json:"version"`
 	Scrollback  int    `json:"scrollback,omitempty"`
+	LogoutURL   string `json:"logoutUrl,omitempty"`
 
 	// Not exposed via /api/v1/config.
 	WebhookURLs []string `json:"-"`
 	ExportURL   string   `json:"-"`
+	UserHeader  string   `json:"-"`
+}
+
+// configResponse extends Config with the per-request username derived from
+// UserHeader. It is only included in the JSON response (omitempty) when
+// UserHeader is configured and present on the request.
+type configResponse struct {
+	Config
+	Username string `json:"username,omitempty"`
 }
 
 type apiMetrics struct {
@@ -101,7 +111,7 @@ func (s *Server) registerRoutes() {
 
 // Handler returns the http.Handler with access-log middleware applied.
 func (s *Server) Handler() http.Handler {
-	return accessLog(s.mux)
+	return accessLog(s.config.UserHeader, s.mux)
 }
 
 // Store returns the session store (used in tests).
@@ -117,7 +127,11 @@ func (s *Server) EvictSession(id string) {
 		return // already gone
 	}
 	s.evict(sess)
-	slog.Info("session evicted by TTL", "id", id)
+	args := []any{"id", id}
+	if s.config.UserHeader != "" {
+		args = append(args, "user", sess.User)
+	}
+	slog.Info("session evicted by TTL", args...)
 }
 
 // evict performs the common teardown for both DELETE and TTL expiry.
@@ -205,17 +219,21 @@ func (s *Server) autoExport(sess *session.Session) {
 	}()
 }
 
-func accessLog(next http.Handler) http.Handler {
+func accessLog(userHeader string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(rw, r)
-		slog.Info("http",
+		args := []any{
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rw.statusCode,
 			"duration_ms", time.Since(start).Milliseconds(),
-		)
+		}
+		if userHeader != "" {
+			args = append(args, "user", r.Header.Get(userHeader))
+		}
+		slog.Info("http", args...)
 	})
 }
 
@@ -256,7 +274,11 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.config)
+	resp := configResponse{Config: s.config}
+	if s.config.UserHeader != "" {
+		resp.Username = r.Header.Get(s.config.UserHeader)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
@@ -392,10 +414,15 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := generateID()
+	user := ""
+	if s.config.UserHeader != "" {
+		user = r.Header.Get(s.config.UserHeader)
+	}
 	sess := session.NewSession(id, req.ContainerID, req.Mode, strm,
 		session.WithContainerName(req.ContainerName),
 		session.WithRuntime(s.config.Runtime),
 		session.WithSize(req.Cols, req.Rows),
+		session.WithUser(user),
 	)
 
 	if req.Mode == session.ModeLogs {
@@ -416,7 +443,11 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		attribute.String("runtime", s.config.Runtime),
 	))
 
-	slog.Info("session created", "id", id, "container", req.ContainerID, "mode", req.Mode)
+	logArgs := []any{"id", id, "container", req.ContainerID, "mode", req.Mode}
+	if s.config.UserHeader != "" {
+		logArgs = append(logArgs, "user", sess.User)
+	}
+	slog.Info("session created", logArgs...)
 	s.notifier.Send(webhook.Payload{
 		Event:     "session.start",
 		SessionID: id,
@@ -506,7 +537,11 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteSession(w http.ResponseWriter, _ *http.Request, sess *session.Session) {
 	s.evict(sess)
-	slog.Info("session deleted", "id", sess.ID)
+	args := []any{"id", sess.ID}
+	if s.config.UserHeader != "" {
+		args = append(args, "user", sess.User)
+	}
+	slog.Info("session deleted", args...)
 	w.WriteHeader(http.StatusNoContent)
 }
 

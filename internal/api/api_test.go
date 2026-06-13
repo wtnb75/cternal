@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,10 +21,16 @@ import (
 
 func newTestServer(t *testing.T) (*api.Server, *runtime.MockRuntime) {
 	t.Helper()
+	return newTestServerWithConfig(t, api.Config{})
+}
+
+func newTestServerWithConfig(t *testing.T, cfg api.Config) (*api.Server, *runtime.MockRuntime) {
+	t.Helper()
 	rt := &runtime.MockRuntime{}
 	store := session.NewStore(10)
 	ttl := session.NewTTLManager(time.Hour, func(id string) { store.Delete(id) })
-	cfg := api.Config{Runtime: "docker", MaxSessions: 10}
+	cfg.Runtime = "docker"
+	cfg.MaxSessions = 10
 	srv := api.NewServer(cfg, rt, store, ttl)
 	return srv, rt
 }
@@ -45,6 +52,75 @@ func TestHandleConfig_methodNotAllowed(t *testing.T) {
 	rr := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+}
+
+func TestHandleConfig_userHeaderAndLogoutURL(t *testing.T) {
+	tests := []struct {
+		name          string
+		userHeader    string
+		logoutURL     string
+		reqHeaderName string
+		reqHeaderVal  string
+		wantUsername  string
+		wantHasUser   bool
+		wantLogoutURL string
+		wantHasLogout bool
+	}{
+		{
+			name:        "no options configured",
+			wantHasUser: false, wantHasLogout: false,
+		},
+		{
+			name:          "user header configured and present in request",
+			userHeader:    "X-Remote-User",
+			reqHeaderName: "X-Remote-User",
+			reqHeaderVal:  "alice",
+			wantUsername:  "alice",
+			wantHasUser:   true,
+		},
+		{
+			name:        "user header configured but absent in request",
+			userHeader:  "X-Remote-User",
+			wantHasUser: false,
+		},
+		{
+			name:          "logout url configured",
+			logoutURL:     "/oauth2/sign_out",
+			wantLogoutURL: "/oauth2/sign_out",
+			wantHasLogout: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, _ := newTestServerWithConfig(t, api.Config{
+				UserHeader: tt.userHeader,
+				LogoutURL:  tt.logoutURL,
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+			if tt.reqHeaderName != "" {
+				req.Header.Set(tt.reqHeaderName, tt.reqHeaderVal)
+			}
+			rr := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rr, req)
+			assert.Equal(t, http.StatusOK, rr.Code)
+
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+
+			username, hasUsername := got["username"]
+			assert.Equal(t, tt.wantHasUser, hasUsername)
+			if tt.wantHasUser {
+				assert.Equal(t, tt.wantUsername, username)
+			}
+
+			logoutURL, hasLogout := got["logoutUrl"]
+			assert.Equal(t, tt.wantHasLogout, hasLogout)
+			if tt.wantHasLogout {
+				assert.Equal(t, tt.wantLogoutURL, logoutURL)
+			}
+		})
+	}
 }
 
 func TestHandleContainers_empty(t *testing.T) {
@@ -676,4 +752,177 @@ func TestStaticHandler_nilFS(t *testing.T) {
 // anyCtx returns a testify argument matcher that accepts any context.
 func anyCtx() interface{} {
 	return mock.MatchedBy(func(ctx context.Context) bool { return ctx != nil })
+}
+
+func TestAccessLog_userHeader(t *testing.T) {
+	tests := []struct {
+		name         string
+		userHeader   string
+		reqHeaderVal string
+		setReqHeader bool
+		wantContains string
+		wantAbsent   string
+	}{
+		{
+			name:       "no user header configured",
+			userHeader: "",
+			wantAbsent: "user=",
+		},
+		{
+			name:         "user header configured and present",
+			userHeader:   "X-Remote-User",
+			setReqHeader: true,
+			reqHeaderVal: "alice",
+			wantContains: "user=alice",
+		},
+		{
+			name:         "user header configured but absent",
+			userHeader:   "X-Remote-User",
+			setReqHeader: false,
+			wantContains: `user=""`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+			defer slog.SetDefault(prev)
+
+			srv, _ := newTestServerWithConfig(t, api.Config{UserHeader: tt.userHeader})
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+			if tt.setReqHeader {
+				req.Header.Set("X-Remote-User", tt.reqHeaderVal)
+			}
+			rr := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rr, req)
+
+			if tt.wantContains != "" {
+				assert.Contains(t, buf.String(), tt.wantContains)
+			}
+			if tt.wantAbsent != "" {
+				assert.NotContains(t, buf.String(), tt.wantAbsent)
+			}
+		})
+	}
+}
+
+func TestCreateSession_userHeader(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	srv, rt := newTestServerWithConfig(t, api.Config{UserHeader: "X-Remote-User"})
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	req.Header.Set("X-Remote-User", "alice")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusCreated, rr.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	id := resp["id"].(string)
+
+	sess, err := srv.Store().Get(id)
+	require.NoError(t, err)
+	assert.Equal(t, "alice", sess.User)
+
+	assert.Contains(t, buf.String(), "session created")
+	assert.Contains(t, buf.String(), "user=alice")
+}
+
+func TestCreateSession_noUserHeaderConfigured(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	srv, rt := newTestServer(t)
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	req.Header.Set("X-Remote-User", "alice") // present, but UserHeader not configured
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusCreated, rr.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	id := resp["id"].(string)
+
+	sess, err := srv.Store().Get(id)
+	require.NoError(t, err)
+	assert.Equal(t, "", sess.User)
+	assert.NotContains(t, buf.String(), "user=")
+}
+
+func TestDeleteSession_userHeader(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	srv, rt := newTestServerWithConfig(t, api.Config{UserHeader: "X-Remote-User"})
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createReq.Header.Set("X-Remote-User", "alice")
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	buf.Reset()
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/"+id, nil)
+	delRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(delRR, delReq)
+	assert.Equal(t, http.StatusNoContent, delRR.Code)
+
+	assert.Contains(t, buf.String(), "session deleted")
+	assert.Contains(t, buf.String(), "user=alice")
+}
+
+func TestEvictSession_userHeader(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	srv, rt := newTestServerWithConfig(t, api.Config{UserHeader: "X-Remote-User"})
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createReq.Header.Set("X-Remote-User", "bob")
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	buf.Reset()
+
+	srv.EvictSession(id)
+
+	assert.Contains(t, buf.String(), "session evicted by TTL")
+	assert.Contains(t, buf.String(), "user=bob")
 }

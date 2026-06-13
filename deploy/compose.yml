@@ -20,6 +20,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-lgtm:4317
       # CTERNAL_WEBHOOK_URL: http://your-webhook-endpoint/
       # CTERNAL_EXPORT_URL: http://your-storage-endpoint/
+      # CTERNAL_USER_HEADER: X-Remote-User
+      # CTERNAL_LOGOUT_URL: /oauth2/sign_out
       HTTP_PROXY: ""
       HTTPS_PROXY: ""
       http_proxy: ""

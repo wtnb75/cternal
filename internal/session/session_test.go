@@ -119,11 +119,13 @@ func TestSession_options(t *testing.T) {
 		session.WithContainerName("mycontainer"),
 		session.WithRuntime("docker"),
 		session.WithSize(120, 40),
+		session.WithUser("alice"),
 	)
 	assert.Equal(t, "mycontainer", sess.ContainerName)
 	assert.Equal(t, "docker", sess.Runtime)
 	assert.Equal(t, uint16(120), sess.Cols)
 	assert.Equal(t, uint16(40), sess.Rows)
+	assert.Equal(t, "alice", sess.User)
 }
 
 func TestSession_getSetStatus(t *testing.T) {

@@ -44,6 +44,14 @@ spec:
             - name: CTERNAL_WEBHOOK_URL
               value: {{ .Values.cternal.webhookUrl | quote }}
             {{- end }}
+            {{- if .Values.cternal.userHeader }}
+            - name: CTERNAL_USER_HEADER
+              value: {{ .Values.cternal.userHeader | quote }}
+            {{- end }}
+            {{- if .Values.cternal.logoutUrl }}
+            - name: CTERNAL_LOGOUT_URL
+              value: {{ .Values.cternal.logoutUrl | quote }}
+            {{- end }}
           {{- if .Values.dockerSocket.enabled }}
           volumeMounts:
             - name: docker-sock
