@@ -56,8 +56,23 @@ All flags can also be set via `CTERNAL_*` environment variables.
 | `--kubeconfig` | `CTERNAL_KUBECONFIG` | — | Path to kubeconfig |
 | `--log-level` | `CTERNAL_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `--log-format` | `CTERNAL_LOG_FORMAT` | `text` | `text` / `json` |
+| `--user-header` | `CTERNAL_USER_HEADER` | — | HTTP request header to display/log as the login username (e.g. `X-Remote-User`); empty disables the feature |
+| `--logout-url` | `CTERNAL_LOGOUT_URL` | — | URL for the logout link shown in the UI; empty hides the link |
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g. `host:4317`) to enable OpenTelemetry export.
+
+### Login username / logout link
+
+`--user-header` lets cternal display and log a "login username" read from a configurable HTTP
+request header (e.g. `X-Remote-User` set by oauth2-proxy, Authelia, or nginx `auth_request`).
+cternal trusts this header value as-is — it performs no authentication or authorization itself.
+
+**This requires that cternal is reachable only through the authenticating reverse proxy.** If
+cternal is directly reachable, clients can set this header themselves and spoof any username
+shown in the UI or recorded in logs. Restrict network access to cternal to the proxy only.
+
+`--logout-url` adds an optional logout link next to the displayed username, pointing at the
+proxy's logout endpoint (e.g. `/oauth2/sign_out`).
 
 ## Development
 

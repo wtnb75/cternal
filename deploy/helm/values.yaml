@@ -31,6 +31,8 @@ cternal:
   otelEndpoint: ""
   webhookUrl: ""
   exportUrl: ""
+  userHeader: ""
+  logoutUrl: ""
 
 # Mount Docker socket for docker runtime
 dockerSocket:
