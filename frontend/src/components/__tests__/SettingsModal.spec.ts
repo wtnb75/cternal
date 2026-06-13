@@ -44,4 +44,13 @@ describe('SettingsModal', () => {
     expect(logoutLink.attributes('href')).toBe('/oauth2/sign_out')
     expect(logoutLink.text()).toBe('Log out')
   })
+
+  it('shows username without a logout link when logoutUrl is not configured', () => {
+    const configStore = useConfigStore()
+    configStore.username = 'alice'
+
+    const wrapper = mountModal()
+    expect(wrapper.find('.settings-user').text()).toContain('alice')
+    expect(wrapper.find('.settings-user a').exists()).toBe(false)
+  })
 })
