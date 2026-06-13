@@ -127,7 +127,11 @@ func (s *Server) EvictSession(id string) {
 		return // already gone
 	}
 	s.evict(sess)
-	slog.Info("session evicted by TTL", "id", id)
+	args := []any{"id", id}
+	if s.config.UserHeader != "" {
+		args = append(args, "user", sess.User)
+	}
+	slog.Info("session evicted by TTL", args...)
 }
 
 // evict performs the common teardown for both DELETE and TTL expiry.
@@ -533,7 +537,11 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteSession(w http.ResponseWriter, _ *http.Request, sess *session.Session) {
 	s.evict(sess)
-	slog.Info("session deleted", "id", sess.ID)
+	args := []any{"id", sess.ID}
+	if s.config.UserHeader != "" {
+		args = append(args, "user", sess.User)
+	}
+	slog.Info("session deleted", args...)
 	w.WriteHeader(http.StatusNoContent)
 }
 

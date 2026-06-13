@@ -865,3 +865,64 @@ func TestCreateSession_noUserHeaderConfigured(t *testing.T) {
 	assert.Equal(t, "", sess.User)
 	assert.NotContains(t, buf.String(), "user=")
 }
+
+func TestDeleteSession_userHeader(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	srv, rt := newTestServerWithConfig(t, api.Config{UserHeader: "X-Remote-User"})
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createReq.Header.Set("X-Remote-User", "alice")
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	buf.Reset()
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/"+id, nil)
+	delRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(delRR, delReq)
+	assert.Equal(t, http.StatusNoContent, delRR.Code)
+
+	assert.Contains(t, buf.String(), "session deleted")
+	assert.Contains(t, buf.String(), "user=alice")
+}
+
+func TestEvictSession_userHeader(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	srv, rt := newTestServerWithConfig(t, api.Config{UserHeader: "X-Remote-User"})
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	createReq.Header.Set("X-Remote-User", "bob")
+	createRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRR, createReq)
+	require.Equal(t, http.StatusCreated, createRR.Code)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createRR.Body.Bytes(), &created))
+	id := created["id"].(string)
+
+	buf.Reset()
+
+	srv.EvictSession(id)
+
+	assert.Contains(t, buf.String(), "session evicted by TTL")
+	assert.Contains(t, buf.String(), "user=bob")
+}
