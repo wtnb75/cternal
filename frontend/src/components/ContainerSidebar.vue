@@ -16,6 +16,11 @@
       </div>
     </div>
 
+    <div v-if="configStore.username" class="sidebar-user">
+      <span class="sidebar-user-name">{{ configStore.username }}</span>
+      <a v-if="configStore.logoutUrl" :href="configStore.logoutUrl" class="sidebar-user-logout">{{ t('logout') }}</a>
+    </div>
+
     <div class="sidebar-filter">
       <input v-model="nameFilter" :placeholder="t('filterByName') + '…'" class="filter-input" />
     </div>
@@ -53,6 +58,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSessionStore } from '@/stores/session'
 import { usePaneStore, type PaneCount } from '@/stores/pane'
+import { useConfigStore } from '@/stores/config'
 import type { Container } from '@/types'
 import SettingsModal from './SettingsModal.vue'
 import { apiUrl } from '@/lib/api'
@@ -62,6 +68,7 @@ const router = useRouter()
 const route = useRoute()
 const store = useSessionStore()
 const paneStore = usePaneStore()
+const configStore = useConfigStore()
 
 const containers = ref<Container[]>([])
 const nameFilter = ref('')
@@ -296,4 +303,30 @@ onMounted(load)
 }
 .btn-action:hover:not(:disabled) { background: var(--bg-surface-alt); }
 .btn-action:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-user-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-user-logout {
+  color: var(--accent);
+  text-decoration: none;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+.sidebar-user-logout:hover { text-decoration: underline; }
 </style>
