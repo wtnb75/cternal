@@ -4,6 +4,8 @@ import { apiUrl } from '@/lib/api'
 
 export const useConfigStore = defineStore('config', () => {
   const scrollback = ref(5000)
+  const username = ref('')
+  const logoutUrl = ref('')
 
   async function load() {
     try {
@@ -13,9 +15,15 @@ export const useConfigStore = defineStore('config', () => {
         if (typeof cfg.scrollback === 'number' && cfg.scrollback > 0) {
           scrollback.value = cfg.scrollback
         }
+        if (typeof cfg.username === 'string') {
+          username.value = cfg.username
+        }
+        if (typeof cfg.logoutUrl === 'string') {
+          logoutUrl.value = cfg.logoutUrl
+        }
       }
     } catch {}
   }
 
-  return { scrollback, load }
+  return { scrollback, username, logoutUrl, load }
 })
