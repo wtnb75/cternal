@@ -62,12 +62,14 @@ func init() {
 	f.String("export-url", "", "HTTP PUT endpoint for auto-exporting .cast files on session end")
 	f.String("podman-host", "", "Podman socket URL (e.g. unix:///run/user/1000/podman/podman.sock)")
 	f.String("kubeconfig", "", "Path to kubeconfig file (default: ~/.kube/config)")
+	f.String("user-header", "", "HTTP header name to use as the login username (e.g. X-Remote-User); empty disables the feature")
+	f.String("logout-url", "", "URL for the logout link shown in the UI; empty hides the link")
 
 	// Bind simple flags so viper resolves: explicit flag > CTERNAL_* env var > default.
 	for _, name := range []string{
 		"addr", "base-path", "runtime", "max-sessions", "session-ttl",
 		"log-level", "log-format", "scrollback", "export-url",
-		"podman-host", "kubeconfig",
+		"podman-host", "kubeconfig", "user-header", "logout-url",
 	} {
 		_ = viper.BindPFlag(name, f.Lookup(name))
 	}
@@ -120,6 +122,8 @@ func runServe(cmd *cobra.Command) error {
 	sessionTTL := viper.GetInt("session-ttl")
 	scrollback := viper.GetInt("scrollback")
 	exportURL := viper.GetString("export-url")
+	userHeader := viper.GetString("user-header")
+	logoutURL := viper.GetString("logout-url")
 
 	// Merge --webhook-url flag values with CTERNAL_WEBHOOK_URL env var.
 	// Both support comma-separated lists.
@@ -161,6 +165,8 @@ func runServe(cmd *cobra.Command) error {
 		Scrollback:  scrollback,
 		WebhookURLs: webhookURLs,
 		ExportURL:   exportURL,
+		UserHeader:  userHeader,
+		LogoutURL:   logoutURL,
 	}
 
 	srv = api.NewServer(cfg, rt, store, ttlMgr)
