@@ -7,6 +7,15 @@
       </div>
 
       <div class="modal-body">
+        <!-- Login user -->
+        <div v-if="configStore.username" class="setting-row settings-user">
+          <label class="setting-label">{{ t('user') }}</label>
+          <div class="settings-user-row">
+            <span class="settings-user-name">{{ configStore.username }}</span>
+            <a v-if="configStore.logoutUrl" :href="configStore.logoutUrl" class="settings-user-logout">{{ t('logout') }}</a>
+          </div>
+        </div>
+
         <!-- Theme -->
         <div class="setting-row">
           <label class="setting-label">{{ t('theme') }}</label>
@@ -60,11 +69,13 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
+import { useConfigStore } from '@/stores/config'
 
 defineEmits<{ close: [] }>()
 
 const { t } = useI18n()
 const settings = useSettingsStore()
+const configStore = useConfigStore()
 </script>
 
 <style scoped>
@@ -165,4 +176,27 @@ const settings = useSettingsStore()
   min-width: 36px;
   text-align: right;
 }
+
+.settings-user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.settings-user-name {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-user-logout {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+.settings-user-logout:hover { text-decoration: underline; }
 </style>
