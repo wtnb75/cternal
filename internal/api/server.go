@@ -29,10 +29,20 @@ type Config struct {
 	BasePath    string `json:"basePath"`
 	Version     string `json:"version"`
 	Scrollback  int    `json:"scrollback,omitempty"`
+	LogoutURL   string `json:"logoutUrl,omitempty"`
 
 	// Not exposed via /api/v1/config.
 	WebhookURLs []string `json:"-"`
 	ExportURL   string   `json:"-"`
+	UserHeader  string   `json:"-"`
+}
+
+// configResponse extends Config with the per-request username derived from
+// UserHeader. It is only included in the JSON response (omitempty) when
+// UserHeader is configured and present on the request.
+type configResponse struct {
+	Config
+	Username string `json:"username,omitempty"`
 }
 
 type apiMetrics struct {
@@ -256,7 +266,11 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.config)
+	resp := configResponse{Config: s.config}
+	if s.config.UserHeader != "" {
+		resp.Username = r.Header.Get(s.config.UserHeader)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {

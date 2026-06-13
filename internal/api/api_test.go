@@ -20,10 +20,16 @@ import (
 
 func newTestServer(t *testing.T) (*api.Server, *runtime.MockRuntime) {
 	t.Helper()
+	return newTestServerWithConfig(t, api.Config{})
+}
+
+func newTestServerWithConfig(t *testing.T, cfg api.Config) (*api.Server, *runtime.MockRuntime) {
+	t.Helper()
 	rt := &runtime.MockRuntime{}
 	store := session.NewStore(10)
 	ttl := session.NewTTLManager(time.Hour, func(id string) { store.Delete(id) })
-	cfg := api.Config{Runtime: "docker", MaxSessions: 10}
+	cfg.Runtime = "docker"
+	cfg.MaxSessions = 10
 	srv := api.NewServer(cfg, rt, store, ttl)
 	return srv, rt
 }
@@ -45,6 +51,75 @@ func TestHandleConfig_methodNotAllowed(t *testing.T) {
 	rr := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+}
+
+func TestHandleConfig_userHeaderAndLogoutURL(t *testing.T) {
+	tests := []struct {
+		name          string
+		userHeader    string
+		logoutURL     string
+		reqHeaderName string
+		reqHeaderVal  string
+		wantUsername  string
+		wantHasUser   bool
+		wantLogoutURL string
+		wantHasLogout bool
+	}{
+		{
+			name:        "no options configured",
+			wantHasUser: false, wantHasLogout: false,
+		},
+		{
+			name:          "user header configured and present in request",
+			userHeader:    "X-Remote-User",
+			reqHeaderName: "X-Remote-User",
+			reqHeaderVal:  "alice",
+			wantUsername:  "alice",
+			wantHasUser:   true,
+		},
+		{
+			name:        "user header configured but absent in request",
+			userHeader:  "X-Remote-User",
+			wantHasUser: false,
+		},
+		{
+			name:          "logout url configured",
+			logoutURL:     "/oauth2/sign_out",
+			wantLogoutURL: "/oauth2/sign_out",
+			wantHasLogout: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, _ := newTestServerWithConfig(t, api.Config{
+				UserHeader: tt.userHeader,
+				LogoutURL:  tt.logoutURL,
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+			if tt.reqHeaderName != "" {
+				req.Header.Set(tt.reqHeaderName, tt.reqHeaderVal)
+			}
+			rr := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rr, req)
+			assert.Equal(t, http.StatusOK, rr.Code)
+
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+
+			username, hasUsername := got["username"]
+			assert.Equal(t, tt.wantHasUser, hasUsername)
+			if tt.wantHasUser {
+				assert.Equal(t, tt.wantUsername, username)
+			}
+
+			logoutURL, hasLogout := got["logoutUrl"]
+			assert.Equal(t, tt.wantHasLogout, hasLogout)
+			if tt.wantHasLogout {
+				assert.Equal(t, tt.wantLogoutURL, logoutURL)
+			}
+		})
+	}
 }
 
 func TestHandleContainers_empty(t *testing.T) {
