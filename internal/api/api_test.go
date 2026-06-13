@@ -807,3 +807,61 @@ func TestAccessLog_userHeader(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateSession_userHeader(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	srv, rt := newTestServerWithConfig(t, api.Config{UserHeader: "X-Remote-User"})
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	req.Header.Set("X-Remote-User", "alice")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusCreated, rr.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	id := resp["id"].(string)
+
+	sess, err := srv.Store().Get(id)
+	require.NoError(t, err)
+	assert.Equal(t, "alice", sess.User)
+
+	assert.Contains(t, buf.String(), "session created")
+	assert.Contains(t, buf.String(), "user=alice")
+}
+
+func TestCreateSession_noUserHeaderConfigured(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	srv, rt := newTestServer(t)
+	ms := &runtime.MockStream{}
+	ms.On("Close").Return(nil)
+	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{}).Return(ms, nil)
+
+	body, _ := json.Marshal(map[string]string{"containerId": "ctr1", "mode": "exec"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
+	req.Header.Set("X-Remote-User", "alice") // present, but UserHeader not configured
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusCreated, rr.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	id := resp["id"].(string)
+
+	sess, err := srv.Store().Get(id)
+	require.NoError(t, err)
+	assert.Equal(t, "", sess.User)
+	assert.NotContains(t, buf.String(), "user=")
+}

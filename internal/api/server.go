@@ -410,10 +410,15 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := generateID()
+	user := ""
+	if s.config.UserHeader != "" {
+		user = r.Header.Get(s.config.UserHeader)
+	}
 	sess := session.NewSession(id, req.ContainerID, req.Mode, strm,
 		session.WithContainerName(req.ContainerName),
 		session.WithRuntime(s.config.Runtime),
 		session.WithSize(req.Cols, req.Rows),
+		session.WithUser(user),
 	)
 
 	if req.Mode == session.ModeLogs {
@@ -434,7 +439,11 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		attribute.String("runtime", s.config.Runtime),
 	))
 
-	slog.Info("session created", "id", id, "container", req.ContainerID, "mode", req.Mode)
+	logArgs := []any{"id", id, "container", req.ContainerID, "mode", req.Mode}
+	if s.config.UserHeader != "" {
+		logArgs = append(logArgs, "user", sess.User)
+	}
+	slog.Info("session created", logArgs...)
 	s.notifier.Send(webhook.Payload{
 		Event:     "session.start",
 		SessionID: id,
