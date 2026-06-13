@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -751,4 +752,58 @@ func TestStaticHandler_nilFS(t *testing.T) {
 // anyCtx returns a testify argument matcher that accepts any context.
 func anyCtx() interface{} {
 	return mock.MatchedBy(func(ctx context.Context) bool { return ctx != nil })
+}
+
+func TestAccessLog_userHeader(t *testing.T) {
+	tests := []struct {
+		name         string
+		userHeader   string
+		reqHeaderVal string
+		setReqHeader bool
+		wantContains string
+		wantAbsent   string
+	}{
+		{
+			name:       "no user header configured",
+			userHeader: "",
+			wantAbsent: "user=",
+		},
+		{
+			name:         "user header configured and present",
+			userHeader:   "X-Remote-User",
+			setReqHeader: true,
+			reqHeaderVal: "alice",
+			wantContains: "user=alice",
+		},
+		{
+			name:         "user header configured but absent",
+			userHeader:   "X-Remote-User",
+			setReqHeader: false,
+			wantContains: `user=""`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+			defer slog.SetDefault(prev)
+
+			srv, _ := newTestServerWithConfig(t, api.Config{UserHeader: tt.userHeader})
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+			if tt.setReqHeader {
+				req.Header.Set("X-Remote-User", tt.reqHeaderVal)
+			}
+			rr := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rr, req)
+
+			if tt.wantContains != "" {
+				assert.Contains(t, buf.String(), tt.wantContains)
+			}
+			if tt.wantAbsent != "" {
+				assert.NotContains(t, buf.String(), tt.wantAbsent)
+			}
+		})
+	}
 }

@@ -111,7 +111,7 @@ func (s *Server) registerRoutes() {
 
 // Handler returns the http.Handler with access-log middleware applied.
 func (s *Server) Handler() http.Handler {
-	return accessLog(s.mux)
+	return accessLog(s.config.UserHeader, s.mux)
 }
 
 // Store returns the session store (used in tests).
@@ -215,17 +215,21 @@ func (s *Server) autoExport(sess *session.Session) {
 	}()
 }
 
-func accessLog(next http.Handler) http.Handler {
+func accessLog(userHeader string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(rw, r)
-		slog.Info("http",
+		args := []any{
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rw.statusCode,
 			"duration_ms", time.Since(start).Milliseconds(),
-		)
+		}
+		if userHeader != "" {
+			args = append(args, "user", r.Header.Get(userHeader))
+		}
+		slog.Info("http", args...)
 	})
 }
 
