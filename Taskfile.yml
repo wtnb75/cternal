@@ -131,6 +131,24 @@ tasks:
       - go mod download
       - pnpm --dir frontend install
 
+  update:
+    desc: Update all dependencies (Go modules + pnpm)
+    cmds:
+      - task: update:go
+      - task: update:frontend
+
+  update:go:
+    desc: Update Go modules to latest minor/patch versions and tidy
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+
+  update:frontend:
+    desc: Update frontend dependencies to latest versions (pnpm update)
+    dir: frontend
+    cmds:
+      - pnpm update
+
   # ── クリーン ──────────────────────────────────────────────
   clean:
     desc: Remove build artifacts (binary, frontend dist, coverage, ESLint cache)

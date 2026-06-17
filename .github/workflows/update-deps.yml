@@ -1,0 +1,54 @@
+name: Update Dependencies
+
+on:
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install
+
+      - name: Update Go modules
+        run: |
+          go get -u ./...
+          go mod tidy
+
+      - name: Update frontend dependencies
+        run: pnpm --dir frontend update
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore: update dependencies"
+          branch: chore/update-deps
+          delete-branch: true
+          title: "chore: update dependencies"
+          body: |
+            Automated dependency update via `workflow_dispatch`.
+
+            - Go modules: `go get -u ./... && go mod tidy`
+            - Frontend: `pnpm update`
