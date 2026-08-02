@@ -11,7 +11,7 @@ import (
 
 // Payload is the JSON body sent to each webhook URL.
 type Payload struct {
-	Event     string `json:"event"`      // "session.start" or "session.end"
+	Event     string `json:"event"` // "session.start" or "session.end"
 	SessionID string `json:"session_id"`
 	Container string `json:"container_id"`
 	Mode      string `json:"mode"`
@@ -26,7 +26,7 @@ type Notifier struct {
 // New creates a Notifier that posts to the given URLs.
 func New(urls []string) *Notifier {
 	return &Notifier{
-		urls: urls,
+		urls:   urls,
 		client: &http.Client{Timeout: 5 * time.Second},
 	}
 }

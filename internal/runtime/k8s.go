@@ -219,4 +219,3 @@ func (s *k8sStream) Close() error {
 	s.cancel()
 	return s.stdin.Close()
 }
-

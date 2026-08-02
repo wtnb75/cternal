@@ -35,7 +35,7 @@ type ExecOptions struct {
 type LogsOptions struct {
 	Since      string // RFC3339 timestamp or duration (e.g. "1h")
 	Follow     bool
-	Timestamps bool   // prefix each line with an RFC3339Nano timestamp (docker logs -t)
+	Timestamps bool // prefix each line with an RFC3339Nano timestamp (docker logs -t)
 }
 
 // Stream represents a bidirectional PTY-capable connection to a container.

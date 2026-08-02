@@ -13,7 +13,7 @@ const (
 
 // Event is a single recorded terminal event.
 type Event struct {
-	Time      time.Duration // time since recording start
-	Type      EventType
-	Data      string
+	Time time.Duration // time since recording start
+	Type EventType
+	Data string
 }

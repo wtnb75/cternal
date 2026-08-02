@@ -9,10 +9,10 @@ import (
 
 func TestParseK8sID_valid(t *testing.T) {
 	cases := []struct {
-		id        string
-		wantNS    string
-		wantPod   string
-		wantCtr   string
+		id      string
+		wantNS  string
+		wantPod string
+		wantCtr string
 	}{
 		{"default/mypod/mycontainer", "default", "mypod", "mycontainer"},
 		{"kube-system/coredns-abc/coredns", "kube-system", "coredns-abc", "coredns"},
