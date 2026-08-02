@@ -1,66 +1,25 @@
-name: Update Dependencies
+name: update-deps
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  update:
+  update-deps:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          package_json_file: frontend/package.json
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Install frontend dependencies
-        run: pnpm --dir frontend install
-
-      - name: Update Go modules
-        run: |
-          go get -u ./...
-          go mod tidy
-
-      - name: Update frontend dependencies
-        run: pnpm --dir frontend update
-
-      - name: Build frontend
-        run: pnpm --dir frontend run build
-
-      - name: Build Go binary
-        run: go build -o /dev/null ./cmd/cternal/
-
-      - name: Run Go tests
-        run: go test -race $(go list ./... | grep -v /frontend/)
-
-      - name: Run frontend tests
-        run: pnpm --dir frontend run test
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v7
-        with:
-          commit-message: "chore: update dependencies"
-          branch: chore/update-deps
-          delete-branch: true
-          title: "chore: update dependencies"
-          body: |
-            Automated dependency update via `workflow_dispatch`.
-
-            - Go modules: `go get -u ./... && go mod tidy`
-            - Frontend: `pnpm update`
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: wtnb75/actions/node@v1
+      with:
+        working-directory: frontend
+    - run: pnpm --dir frontend run build
+    - uses: wtnb75/actions/nodeupdate@v1
+      with:
+        working-directory: frontend
+        test-args: test
+    - uses: wtnb75/actions/goupdate@v1
+      with:
+        go-test-args: "-v ./..."

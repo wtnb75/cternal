@@ -714,11 +714,11 @@ func TestGetSessionCast_withResize(t *testing.T) {
 	rt.On("Exec", anyCtx(), "ctr1", runtime.ExecOptions{Cols: 120, Rows: 40}).Return(ms, nil)
 
 	body, _ := json.Marshal(map[string]any{
-		"containerId": "ctr1",
-		"mode":        "exec",
+		"containerId":   "ctr1",
+		"mode":          "exec",
 		"containerName": "web",
-		"cols": 120,
-		"rows": 40,
+		"cols":          120,
+		"rows":          40,
 	})
 	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", bytes.NewBuffer(body))
 	createRR := httptest.NewRecorder()

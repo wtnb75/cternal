@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -18,6 +17,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -26,11 +26,11 @@ const (
 
 // Metrics holds pre-registered OTel instruments.
 type Metrics struct {
-	ActiveSessions   metric.Int64UpDownCounter
-	SessionDuration  metric.Float64Histogram
-	WSMessages       metric.Int64Counter
-	APILatency       metric.Float64Histogram
-	WebhookErrors    metric.Int64Counter
+	ActiveSessions  metric.Int64UpDownCounter
+	SessionDuration metric.Float64Histogram
+	WSMessages      metric.Int64Counter
+	APILatency      metric.Float64Histogram
+	WebhookErrors   metric.Int64Counter
 }
 
 // Provider wraps OTel SDK providers and exposes metrics.
