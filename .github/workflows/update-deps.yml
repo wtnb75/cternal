@@ -20,6 +20,8 @@ jobs:
       with:
         working-directory: frontend
         test-args: test
+        branch: chore/update-deps-node
     - uses: wtnb75/actions/goupdate@v1
       with:
         go-test-args: "-v ./..."
+        branch: chore/update-deps-go
