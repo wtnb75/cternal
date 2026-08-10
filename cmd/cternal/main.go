@@ -131,7 +131,7 @@ func runServe(cmd *cobra.Command) error {
 	rawURLs := append(flagURLs, strings.Split(os.Getenv("CTERNAL_WEBHOOK_URL"), ",")...)
 	var webhookURLs []string
 	for _, raw := range rawURLs {
-		for _, u := range strings.Split(raw, ",") {
+		for u := range strings.SplitSeq(raw, ",") {
 			if u = strings.TrimSpace(u); u != "" {
 				webhookURLs = append(webhookURLs, u)
 			}

@@ -211,13 +211,11 @@ func TestSession_concurrent_subscribeUnsubscribe(t *testing.T) {
 	sess := newSession("s1")
 	var wg sync.WaitGroup
 	for range 20 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sub := sess.Subscribe()
 			sess.Broadcast([]byte("data"))
 			sess.Unsubscribe(sub)
-		}()
+		})
 	}
 	wg.Wait()
 	assert.Equal(t, 0, sess.SubscriberCount())
