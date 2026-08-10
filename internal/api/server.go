@@ -295,8 +295,8 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 	if lbls := q["label"]; len(lbls) > 0 {
 		filter.Labels = make(map[string]string, len(lbls))
 		for _, lbl := range lbls {
-			if idx := strings.IndexByte(lbl, '='); idx >= 0 {
-				filter.Labels[lbl[:idx]] = lbl[idx+1:]
+			if before, after, ok := strings.Cut(lbl, "="); ok {
+				filter.Labels[before] = after
 			} else {
 				filter.Labels[lbl] = ""
 			}

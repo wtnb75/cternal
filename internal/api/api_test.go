@@ -750,7 +750,7 @@ func TestStaticHandler_nilFS(t *testing.T) {
 }
 
 // anyCtx returns a testify argument matcher that accepts any context.
-func anyCtx() interface{} {
+func anyCtx() any {
 	return mock.MatchedBy(func(ctx context.Context) bool { return ctx != nil })
 }
 

@@ -60,12 +60,10 @@ func TestRecorder_concurrent(t *testing.T) {
 	}
 	// Concurrent reads while writes happen
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_ = r.Len()
 			_ = r.All()
-		}()
+		})
 	}
 	wg.Wait()
 	assert.Equal(t, n, r.Len())
