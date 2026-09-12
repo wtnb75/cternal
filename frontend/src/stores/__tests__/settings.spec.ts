@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useSettingsStore } from '../settings'
+import { DEFAULT_TERMINAL_FONT } from '@/constants/fonts'
 
 describe('useSettingsStore', () => {
   beforeEach(() => {
@@ -25,6 +26,10 @@ describe('useSettingsStore', () => {
     it('defaults fontSize to 14', () => {
       expect(useSettingsStore().fontSize).toBe(14)
     })
+
+    it('defaults fontFamily to the system default font', () => {
+      expect(useSettingsStore().fontFamily).toBe(DEFAULT_TERMINAL_FONT)
+    })
   })
 
   describe('loading from localStorage', () => {
@@ -41,6 +46,11 @@ describe('useSettingsStore', () => {
     it('loads fontSize from localStorage', () => {
       localStorage.setItem('cternal.fontSize', '18')
       expect(useSettingsStore().fontSize).toBe(18)
+    })
+
+    it('loads fontFamily from localStorage', () => {
+      localStorage.setItem('cternal.fontFamily', '"\\"JetBrains Mono\\", monospace"')
+      expect(useSettingsStore().fontFamily).toBe('"JetBrains Mono", monospace')
     })
 
     it('falls back to default on invalid JSON', () => {
@@ -69,6 +79,13 @@ describe('useSettingsStore', () => {
       store.fontSize = 20
       await nextTick()
       expect(localStorage.getItem('cternal.fontSize')).toBe('20')
+    })
+
+    it('persists fontFamily change', async () => {
+      const store = useSettingsStore()
+      store.fontFamily = '"Fira Code", monospace'
+      await nextTick()
+      expect(localStorage.getItem('cternal.fontFamily')).toBe('"\\"Fira Code\\", monospace"')
     })
   })
 

@@ -17,7 +17,7 @@ vi.mock('@/stores/config', () => ({
   useConfigStore: () => ({ scrollback: 5000, load: vi.fn<() => Promise<void>>() }),
 }))
 vi.mock('@/stores/settings', () => ({
-  useSettingsStore: () => ({ fontSize: 14 }),
+  useSettingsStore: () => ({ fontSize: 14, fontFamily: 'Menlo, Consolas, monospace' }),
 }))
 
 const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
@@ -49,13 +49,14 @@ describe('TerminalView', () => {
       disconnect: vi.fn<() => void>(),
     })
     vi.mocked(useTerminal).mockReturnValue({
-      init: vi.fn<(el: HTMLElement, scrollback?: number, fontSize?: number) => void>(),
+      init: vi.fn<(el: HTMLElement, scrollback?: number, fontSize?: number, theme?: 'dark' | 'light', fontFamily?: string) => void>(),
       write: vi.fn<(data: string) => void>(),
       fit: vi.fn<() => { cols: number; rows: number } | null>(() => ({ cols: 80, rows: 24 })),
       onData: vi.fn<(handler: (data: string) => void) => undefined>(),
       search: vi.fn<(query: string) => void>(),
       searchPrev: vi.fn<(query: string) => void>(),
       setFontSize: vi.fn<(size: number) => void>(),
+      setFontFamily: vi.fn<(family: string) => void>(),
       setTheme: vi.fn<(theme: 'dark' | 'light') => void>(),
       dispose: vi.fn<() => void>(),
       terminal: () => null,
@@ -159,6 +160,34 @@ describe('TerminalView', () => {
     expect(mockDisconnect).toHaveBeenCalledOnce()
   })
 
+  it('initializes the terminal with the configured font family', async () => {
+    const initSpy = vi.fn<(el: HTMLElement, scrollback?: number, fontSize?: number, theme?: 'dark' | 'light', fontFamily?: string) => void>()
+    vi.mocked(useTerminal).mockReturnValue({
+      init: initSpy,
+      write: vi.fn<(data: string) => void>(),
+      fit: vi.fn<() => { cols: number; rows: number } | null>(() => ({ cols: 80, rows: 24 })),
+      onData: vi.fn<(handler: (data: string) => void) => undefined>(),
+      search: vi.fn<(query: string) => void>(),
+      searchPrev: vi.fn<(query: string) => void>(),
+      setFontSize: vi.fn<(size: number) => void>(),
+      setFontFamily: vi.fn<(family: string) => void>(),
+      setTheme: vi.fn<(theme: 'dark' | 'light') => void>(),
+      dispose: vi.fn<() => void>(),
+      terminal: () => null,
+      termRef: ref(null),
+    })
+
+    await mountView()
+
+    expect(initSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      5000,
+      14,
+      undefined,
+      'Menlo, Consolas, monospace',
+    )
+  })
+
   it('writes exit banner to terminal when process exits', async () => {
     // Capture the WS message callback and terminal write spy via mockImplementationOnce.
     let wsHandler: ((msg: WSMessage) => void) = () => {}
@@ -176,6 +205,7 @@ describe('TerminalView', () => {
       search: vi.fn<(query: string) => void>(),
       searchPrev: vi.fn<(query: string) => void>(),
       setFontSize: vi.fn<(size: number) => void>(),
+      setFontFamily: vi.fn<(family: string) => void>(),
       setTheme: vi.fn<(theme: 'dark' | 'light') => void>(),
       dispose: vi.fn<() => void>(),
       terminal: () => null,

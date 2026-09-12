@@ -61,6 +61,16 @@
             <span class="font-value">{{ settings.fontSize }}px</span>
           </div>
         </div>
+
+        <!-- Font Family -->
+        <div class="setting-row">
+          <label class="setting-label">{{ t('fontFamily') }}</label>
+          <select v-model="settings.fontFamily" class="font-family-select">
+            <option v-for="font in TERMINAL_FONTS" :key="font.value" :value="font.value">
+              {{ font.label }}
+            </option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
@@ -70,6 +80,7 @@
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { useConfigStore } from '@/stores/config'
+import { TERMINAL_FONTS } from '@/constants/fonts'
 
 defineEmits<{ close: [] }>()
 
@@ -175,6 +186,15 @@ const configStore = useConfigStore()
   color: var(--text-primary);
   min-width: 36px;
   text-align: right;
+}
+
+.font-family-select {
+  padding: 0.35rem 0.5rem;
+  background: var(--bg-base);
+  border: 1px solid var(--bg-surface-alt);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
 }
 
 .settings-user-row {

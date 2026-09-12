@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import type { ITheme } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
+import { DEFAULT_TERMINAL_FONT } from '@/constants/fonts'
 
 const THEMES: Record<'dark' | 'light', ITheme> = {
   dark: {
@@ -36,11 +37,18 @@ export function useTerminal() {
   let fitAddon: FitAddon | null = null
   let searchAddon: SearchAddon | null = null
 
-  function init(el: HTMLElement, scrollback?: number, fontSize?: number, theme: 'dark' | 'light' = 'dark') {
+  function init(
+    el: HTMLElement,
+    scrollback?: number,
+    fontSize?: number,
+    theme: 'dark' | 'light' = 'dark',
+    fontFamily?: string,
+  ) {
     terminal = new Terminal({
       cursorBlink: true,
       scrollback: scrollback ?? 5000,
       fontSize: fontSize ?? 14,
+      fontFamily: fontFamily ?? DEFAULT_TERMINAL_FONT,
       theme: THEMES[theme],
     })
     fitAddon = new FitAddon()
@@ -81,6 +89,12 @@ export function useTerminal() {
     fitAddon?.fit()
   }
 
+  function setFontFamily(fontFamily: string) {
+    if (!terminal) return
+    terminal.options.fontFamily = fontFamily
+    fitAddon?.fit()
+  }
+
   function setTheme(theme: 'dark' | 'light') {
     if (!terminal) return
     terminal.options.theme = THEMES[theme]
@@ -93,5 +107,5 @@ export function useTerminal() {
 
   onUnmounted(dispose)
 
-  return { termRef, init, write, fit, onData, search, searchPrev, setFontSize, setTheme, dispose, terminal: () => terminal }
+  return { termRef, init, write, fit, onData, search, searchPrev, setFontSize, setFontFamily, setTheme, dispose, terminal: () => terminal }
 }
