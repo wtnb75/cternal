@@ -28,6 +28,7 @@
   "japanese": "日本語",
   "english": "English",
   "fontSize": "フォントサイズ",
+  "fontFamily": "フォント",
   "failedFetch": "コンテナの取得に失敗しました",
   "failedConnect": "接続に失敗しました",
   "close": "閉じる",

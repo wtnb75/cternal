@@ -51,6 +51,7 @@ describe('ReplayView', () => {
       search: vi.fn<(query: string) => void>(),
       searchPrev: vi.fn<(query: string) => void>(),
       setFontSize: vi.fn<(size: number) => void>(),
+      setFontFamily: vi.fn<(family: string) => void>(),
       setTheme: vi.fn<(theme: 'dark' | 'light') => void>(),
       dispose: vi.fn<() => void>(),
       terminal: () => null,

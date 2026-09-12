@@ -128,6 +128,27 @@ describe('useTerminal', () => {
     expect(() => setFontSize(18)).not.toThrow()
   })
 
+  it('init passes fontFamily through to the Terminal constructor', () => {
+    const { init } = useTerminal()
+    init(document.createElement('div'), undefined, undefined, undefined, '"Fira Code", monospace')
+    expect(Terminal).toHaveBeenCalledWith(
+      expect.objectContaining({ fontFamily: '"Fira Code", monospace' }),
+    )
+  })
+
+  it('setFontFamily updates terminal options and calls fit', () => {
+    const { init, setFontFamily } = useTerminal()
+    init(document.createElement('div'))
+    setFontFamily('"JetBrains Mono", monospace')
+    expect(mockTerm.options.fontFamily).toBe('"JetBrains Mono", monospace')
+    expect(mockFit.fit).toHaveBeenCalledTimes(2) // once in init, once in setFontFamily
+  })
+
+  it('setFontFamily is a no-op before init', () => {
+    const { setFontFamily } = useTerminal()
+    expect(() => setFontFamily('"JetBrains Mono", monospace')).not.toThrow()
+  })
+
   it('setTheme updates terminal theme option', () => {
     const { init, setTheme } = useTerminal()
     init(document.createElement('div'))

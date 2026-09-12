@@ -4,6 +4,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import SettingsModal from '../SettingsModal.vue'
 import { useConfigStore } from '@/stores/config'
+import { useSettingsStore } from '@/stores/settings'
+import { TERMINAL_FONTS } from '@/constants/fonts'
 import en from '@/locales/en.json'
 
 function makeI18n() {
@@ -52,5 +54,20 @@ describe('SettingsModal', () => {
     const wrapper = mountModal()
     expect(wrapper.find('.settings-user').text()).toContain('alice')
     expect(wrapper.find('.settings-user a').exists()).toBe(false)
+  })
+
+  it('lists every configured font as a selectable option', () => {
+    const wrapper = mountModal()
+    const options = wrapper.findAll('.font-family-select option').map(o => (o.element as HTMLOptionElement).value)
+    expect(options).toEqual(TERMINAL_FONTS.map(f => f.value))
+  })
+
+  it('updates the settings store when a font is selected', async () => {
+    const wrapper = mountModal()
+    const settings = useSettingsStore()
+
+    await wrapper.find('.font-family-select').setValue('"Fira Code", monospace')
+
+    expect(settings.fontFamily).toBe('"Fira Code", monospace')
   })
 })

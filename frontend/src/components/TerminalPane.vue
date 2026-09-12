@@ -58,7 +58,7 @@ const showSearch = ref(false)
 const searchQuery = ref('')
 const searchInputEl = ref<HTMLInputElement | null>(null)
 
-const { init, write, fit, onData, search, searchPrev, setFontSize, setTheme, terminal } = useTerminal()
+const { init, write, fit, onData, search, searchPrev, setFontSize, setFontFamily, setTheme, terminal } = useTerminal()
 
 const { connected, send } = useWebSocket(wsUrl(props.sessionId), (msg: WSMessage) => {
   if (msg.type === 'output') write(msg.data)
@@ -94,7 +94,7 @@ let resizeObserver: ResizeObserver | null = null
 onMounted(async () => {
   if (!termEl.value) return
 
-  init(termEl.value, configStore.scrollback, settingsStore.fontSize, settingsStore.theme)
+  init(termEl.value, configStore.scrollback, settingsStore.fontSize, settingsStore.theme, settingsStore.fontFamily)
   onData?.((data: string) => send({ type: 'input', data }))
   handleResize()
 
@@ -126,7 +126,7 @@ onUnmounted(() => {
 })
 
 // Expose for parent-triggered theme/font updates (via watch in PaneView)
-defineExpose({ setFontSize, setTheme })
+defineExpose({ setFontSize, setFontFamily, setTheme })
 </script>
 
 <style scoped>

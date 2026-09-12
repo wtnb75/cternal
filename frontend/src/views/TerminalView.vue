@@ -54,7 +54,7 @@ let resizeObserver: ResizeObserver | null = null
 const { t } = useI18n()
 const configStore = useConfigStore()
 const settingsStore = useSettingsStore()
-const { init, write, fit, onData, search, searchPrev, setFontSize, setTheme, terminal } = useTerminal()
+const { init, write, fit, onData, search, searchPrev, setFontSize, setFontFamily, setTheme, terminal } = useTerminal()
 
 const { connected, send } = useWebSocket(wsUrl(sessionId), (msg: WSMessage) => {
   if (msg.type === 'output') {
@@ -105,11 +105,15 @@ function doSearchPrev() {
 onMounted(async () => {
   if (!termEl.value) return
 
-  init(termEl.value, configStore.scrollback, settingsStore.fontSize, settingsStore.theme)
+  init(termEl.value, configStore.scrollback, settingsStore.fontSize, settingsStore.theme, settingsStore.fontFamily)
 
   // Keep terminal appearance in sync with settings while this session is open.
   watch(() => settingsStore.fontSize, (size) => {
     setFontSize(size)
+    handleResize()
+  })
+  watch(() => settingsStore.fontFamily, (family) => {
+    setFontFamily(family)
     handleResize()
   })
   watch(() => settingsStore.theme, (theme) => {
