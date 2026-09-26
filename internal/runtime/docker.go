@@ -108,6 +108,10 @@ func (d *DockerRuntime) Exec(ctx context.Context, id string, opts ExecOptions) (
 }
 
 func (d *DockerRuntime) Attach(ctx context.Context, id string) (Stream, error) {
+	info, err := d.cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("inspect container: %w", err)
+	}
 	resp, err := d.cli.ContainerAttach(ctx, id, client.ContainerAttachOptions{
 		Stream: true,
 		Stdin:  true,
@@ -117,24 +121,26 @@ func (d *DockerRuntime) Attach(ctx context.Context, id string) (Stream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("attach: %w", err)
 	}
-	// ContainerAttach without a Tty container uses Docker's multiplexed framing.
-	// Use stdcopy to demultiplex; this also works correctly for Tty containers
-	// because stdcopy merges stdout+stderr into a single stream.
-	ds := newDockerStream(resp.HijackedResponse, false)
+	// The stream framing follows the container's Tty setting, not the attach
+	// request: raw bytes for Tty containers, multiplexed frames otherwise.
+	ds := newDockerStream(resp.HijackedResponse, containerTTY(info))
 	ds.containerID = id
 	ds.cli = d.cli
 	return ds, nil
 }
 
 func (d *DockerRuntime) Logs(ctx context.Context, id string, opts LogsOptions) (io.ReadCloser, error) {
+	// Inspect is always needed to know whether the log stream is multiplexed.
+	info, err := d.cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("inspect container: %w", err)
+	}
 	since := opts.Since
 	if since == "" {
 		// Default: logs from container start
-		info, err := d.cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("inspect container: %w", err)
+		if info.Container.State != nil {
+			since = info.Container.State.StartedAt
 		}
-		since = info.Container.State.StartedAt
 	}
 
 	rc, err := d.cli.ContainerLogs(ctx, id, client.ContainerLogsOptions{
@@ -147,15 +153,20 @@ func (d *DockerRuntime) Logs(ctx context.Context, id string, opts LogsOptions) (
 	if err != nil {
 		return nil, fmt.Errorf("logs: %w", err)
 	}
-	// ContainerLogs always uses Docker's multiplexed framing (even without Tty).
-	// Pipe stdout+stderr through stdcopy so callers receive plain text.
+	if containerTTY(info) {
+		return rc, nil
+	}
 	pr, pw := io.Pipe()
 	go func() {
-		_, _ = stdcopy.StdCopy(pw, pw, rc)
-		_ = pw.Close()
+		_, err := stdcopy.StdCopy(pw, pw, rc)
+		_ = pw.CloseWithError(err)
 		_ = rc.Close()
 	}()
 	return pr, nil
+}
+
+func containerTTY(info client.ContainerInspectResult) bool {
+	return info.Container.Config != nil && info.Container.Config.Tty
 }
 
 // dockerStream wraps a Docker HijackedResponse as a Stream.
@@ -172,8 +183,8 @@ type dockerStream struct {
 }
 
 // newDockerStream builds a dockerStream.  pass tty=true when the exec/attach
-// was created with Tty:true (raw PTY stream); pass tty=false for multiplexed
-// streams (attach without Tty, logs).
+// was created with Tty:true or attaches to a Tty container (raw PTY stream);
+// pass tty=false for multiplexed streams (attach to a non-Tty container).
 func newDockerStream(conn client.HijackedResponse, tty bool) *dockerStream {
 	var r io.Reader
 	if tty {
@@ -181,8 +192,8 @@ func newDockerStream(conn client.HijackedResponse, tty bool) *dockerStream {
 	} else {
 		pr, pw := io.Pipe()
 		go func() {
-			_, _ = stdcopy.StdCopy(pw, pw, conn.Reader)
-			_ = pw.Close()
+			_, err := stdcopy.StdCopy(pw, pw, conn.Reader)
+			_ = pw.CloseWithError(err)
 		}()
 		r = pr
 	}
