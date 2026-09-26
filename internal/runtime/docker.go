@@ -6,11 +6,8 @@ import (
 	"io"
 	"strings"
 
-	dockertypes "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/client"
 )
 
 // DockerRuntime implements Runtime using the Docker SDK.
@@ -21,7 +18,7 @@ type DockerRuntime struct {
 // NewDockerRuntime creates a DockerRuntime connected to the Docker daemon
 // described by the standard DOCKER_HOST / DOCKER_TLS_VERIFY environment variables.
 func NewDockerRuntime() (*DockerRuntime, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("docker client: %w", err)
 	}
@@ -29,7 +26,7 @@ func NewDockerRuntime() (*DockerRuntime, error) {
 }
 
 func (d *DockerRuntime) ListContainers(ctx context.Context, f Filter) ([]Container, error) {
-	args := filters.NewArgs()
+	args := make(client.Filters)
 	if f.Name != "" {
 		args.Add("name", f.Name)
 	}
@@ -40,7 +37,7 @@ func (d *DockerRuntime) ListContainers(ctx context.Context, f Filter) ([]Contain
 		args.Add("label", k+"="+v)
 	}
 
-	list, err := d.cli.ContainerList(ctx, container.ListOptions{
+	list, err := d.cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
 		Filters: args,
 	})
@@ -48,8 +45,8 @@ func (d *DockerRuntime) ListContainers(ctx context.Context, f Filter) ([]Contain
 		return nil, fmt.Errorf("list containers: %w", err)
 	}
 
-	result := make([]Container, 0, len(list))
-	for _, c := range list {
+	result := make([]Container, 0, len(list.Items))
+	for _, c := range list.Items {
 		name := ""
 		if len(c.Names) > 0 {
 			name = strings.TrimPrefix(c.Names[0], "/")
@@ -81,11 +78,11 @@ func (d *DockerRuntime) Exec(ctx context.Context, id string, opts ExecOptions) (
 		rows = 24
 	}
 
-	execResp, err := d.cli.ContainerExecCreate(ctx, id, container.ExecOptions{
+	execResp, err := d.cli.ExecCreate(ctx, id, client.ExecCreateOptions{
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		Tty:          true,
+		TTY:          true,
 		Cmd:          shell,
 		Env:          opts.Env,
 	})
@@ -93,25 +90,25 @@ func (d *DockerRuntime) Exec(ctx context.Context, id string, opts ExecOptions) (
 		return nil, fmt.Errorf("exec create: %w", err)
 	}
 
-	resp, err := d.cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{Tty: true})
+	resp, err := d.cli.ExecAttach(ctx, execResp.ID, client.ExecAttachOptions{TTY: true})
 	if err != nil {
 		return nil, fmt.Errorf("exec attach: %w", err)
 	}
 
-	_ = d.cli.ContainerExecResize(ctx, execResp.ID, container.ResizeOptions{
+	_, _ = d.cli.ExecResize(ctx, execResp.ID, client.ExecResizeOptions{
 		Height: uint(rows),
 		Width:  uint(cols),
 	})
 
 	// Tty=true: Docker daemon sends raw PTY bytes (no multiplex framing).
-	ds := newDockerStream(resp, true)
+	ds := newDockerStream(resp.HijackedResponse, true)
 	ds.execID = execResp.ID
 	ds.cli = d.cli
 	return ds, nil
 }
 
 func (d *DockerRuntime) Attach(ctx context.Context, id string) (Stream, error) {
-	resp, err := d.cli.ContainerAttach(ctx, id, container.AttachOptions{
+	resp, err := d.cli.ContainerAttach(ctx, id, client.ContainerAttachOptions{
 		Stream: true,
 		Stdin:  true,
 		Stdout: true,
@@ -123,7 +120,7 @@ func (d *DockerRuntime) Attach(ctx context.Context, id string) (Stream, error) {
 	// ContainerAttach without a Tty container uses Docker's multiplexed framing.
 	// Use stdcopy to demultiplex; this also works correctly for Tty containers
 	// because stdcopy merges stdout+stderr into a single stream.
-	ds := newDockerStream(resp, false)
+	ds := newDockerStream(resp.HijackedResponse, false)
 	ds.containerID = id
 	ds.cli = d.cli
 	return ds, nil
@@ -133,14 +130,14 @@ func (d *DockerRuntime) Logs(ctx context.Context, id string, opts LogsOptions) (
 	since := opts.Since
 	if since == "" {
 		// Default: logs from container start
-		info, err := d.cli.ContainerInspect(ctx, id)
+		info, err := d.cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("inspect container: %w", err)
 		}
-		since = info.State.StartedAt
+		since = info.Container.State.StartedAt
 	}
 
-	rc, err := d.cli.ContainerLogs(ctx, id, container.LogsOptions{
+	rc, err := d.cli.ContainerLogs(ctx, id, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     opts.Follow,
@@ -167,7 +164,7 @@ func (d *DockerRuntime) Logs(ctx context.Context, id string, opts LogsOptions) (
 // io.Pipe + stdcopy.StdCopy goroutine for the non-TTY case so that Read()
 // always returns clean data regardless of the underlying framing.
 type dockerStream struct {
-	conn        dockertypes.HijackedResponse
+	conn        client.HijackedResponse
 	execID      string
 	containerID string
 	cli         *client.Client
@@ -177,7 +174,7 @@ type dockerStream struct {
 // newDockerStream builds a dockerStream.  pass tty=true when the exec/attach
 // was created with Tty:true (raw PTY stream); pass tty=false for multiplexed
 // streams (attach without Tty, logs).
-func newDockerStream(conn dockertypes.HijackedResponse, tty bool) *dockerStream {
+func newDockerStream(conn client.HijackedResponse, tty bool) *dockerStream {
 	var r io.Reader
 	if tty {
 		r = conn.Reader
@@ -209,16 +206,18 @@ func (s *dockerStream) Write(data []byte) error {
 func (s *dockerStream) Resize(cols, rows uint16) error {
 	ctx := context.Background()
 	if s.execID != "" {
-		return s.cli.ContainerExecResize(ctx, s.execID, container.ResizeOptions{
+		_, err := s.cli.ExecResize(ctx, s.execID, client.ExecResizeOptions{
 			Width:  uint(cols),
 			Height: uint(rows),
 		})
+		return err
 	}
 	if s.containerID != "" {
-		return s.cli.ContainerResize(ctx, s.containerID, container.ResizeOptions{
+		_, err := s.cli.ContainerResize(ctx, s.containerID, client.ContainerResizeOptions{
 			Width:  uint(cols),
 			Height: uint(rows),
 		})
+		return err
 	}
 	return nil
 }
