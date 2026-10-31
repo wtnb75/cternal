@@ -35,7 +35,7 @@
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/test-utils": "^2.5.1",
     "@vue/tsconfig": "^0.9.1",
-    "eslint": "^10.13.0",
+    "eslint": "^10.14.0",
     "eslint-plugin-oxlint": "~1.60.0",
     "eslint-plugin-vue": "~10.8.0",
     "jiti": "^2.7.0",
@@ -46,7 +46,7 @@
     "vite": "^8.3.5",
     "vite-plugin-vue-devtools": "^8.2.1",
     "vitest": "^4.1.12",
-    "vue-tsc": "^3.3.13"
+    "vue-tsc": "^3.3.14"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
